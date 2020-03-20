@@ -41,10 +41,9 @@ def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, db
         return abs(abs(x)**(1.0/sp))
     xs = np.concatenate([-abs(np.flip(scale(np.linspace(scale_inv(1), scale_inv(-xmin), 20))[1:], axis=0)), [-0.1], scale(np.linspace(scale_inv(1), scale_inv(xmax), 10)[1:])])
     ys = np.concatenate([[ymin, 0.7, 1.2], scale(np.linspace(scale_inv(1), scale_inv(xmax), 20)[2:])])
-    # Previous Amazon grid was 34x18 = 612 values per sheet. This one is 44x26 = 1144 values per sheet.
+    # This grid has 609 values per sheet, similar to the previous Amazon grid.
     # for x in xs: print("x = {0:.5f}".format(x)) # print statements that can be used to check grid spacing
     # for y in ys: print("y = {0:.5f}".format(y))
-    print("number of points is ", len(xs)*len(ys))
     ec = np.zeros(shape=(len(xs),len(ys)))
     pd = np.zeros(shape=(len(xs),len(ys)))
     count = 1
