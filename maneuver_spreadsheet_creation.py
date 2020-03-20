@@ -20,16 +20,16 @@ from maneuvermodel.dynamics import CONVERGENCE_FAILURE_COST
 
 IS_MAC = (os.uname()[0] == 'Darwin')
 
-def calculate_cost_tables(fork_length, focal_current_speed, temperature, taskid, dbcursor):
+def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, dbcursor):
     max_thrust = 2.4 * fork_length + 40
     fish_mass = 0.0 # this input defaults the model to a rainbow trout length-mass regression
     fish_SMR = 0.0  # unused in this case
     fish_NREI = 0.0 # also unused in this case
+    temperature = 10 # also unused in this case
     use_total_cost = False
     disable_wait_time = False
-    fish = maneuveringfish.ManeuveringFish(fork_length, focal_current_speed, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
-
-    prey_length_mm_for_max_distance = 15  # mm, set the max distance considered to the max at which 15-mm prey could be resolved
+    fish = maneuveringfish.ManeuveringFish(fork_length, focal_velocity, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
+    prey_length_mm_for_max_distance = 20  # mm, set the max distance considered to the max at which 20-mm prey could be resolved
     max_visible_distance = 12 * prey_length_mm_for_max_distance * (1. - np.exp(-0.2 * fork_length)) # max visible distance of prey in cm
     # the minimum lateral (y) distance we'll consider for maneuver is 0.2 cm, basically just a head-snap maneuver for the smallest drift foragers
     # We also insert a couple of manual values in there to get consistent coverage at short distances before the scaled values kick in for all fish.
@@ -39,11 +39,12 @@ def calculate_cost_tables(fork_length, focal_current_speed, temperature, taskid,
         return (x)**sp
     def scale_inv(x):
         return abs(abs(x)**(1.0/sp))
-    xs = np.concatenate([-abs(np.flip(scale(np.linspace(scale_inv(1), scale_inv(-xmin), 30))[1:], axis=0)), [-0.1], scale(np.linspace(scale_inv(1), scale_inv(xmax), 15)[1:])])
-    ys = np.concatenate([[ymin, 0.7, 1.2], scale(np.linspace(scale_inv(1), scale_inv(xmax), 25)[2:])])
+    xs = np.concatenate([-abs(np.flip(scale(np.linspace(scale_inv(1), scale_inv(-xmin), 20))[1:], axis=0)), [-0.1], scale(np.linspace(scale_inv(1), scale_inv(xmax), 10)[1:])])
+    ys = np.concatenate([[ymin, 0.7, 1.2], scale(np.linspace(scale_inv(1), scale_inv(xmax), 20)[2:])])
     # Previous Amazon grid was 34x18 = 612 values per sheet. This one is 44x26 = 1144 values per sheet.
     # for x in xs: print("x = {0:.5f}".format(x)) # print statements that can be used to check grid spacing
     # for y in ys: print("y = {0:.5f}".format(y))
+    print("number of points is ", len(xs)*len(ys))
     ec = np.zeros(shape=(len(xs),len(ys)))
     pd = np.zeros(shape=(len(xs),len(ys)))
     count = 1
@@ -51,7 +52,7 @@ def calculate_cost_tables(fork_length, focal_current_speed, temperature, taskid,
     for i in range(len(xs)):
         for j in range(len(ys)):
             print("Calculating optimal maneuver for detection point ", xs[i], ", ", ys[j], ", 0")
-            sol = optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D = (xs[i], ys[j], 0.0), n=50, iterations=3000, p_a=0.25, suppress_output=True)
+            sol = optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D = (xs[i], ys[j], 0.0), prey_velocity=prey_velocity, n=50, iterations=3000, p_a=0.25, suppress_output=True)
             if sol.energy_cost != CONVERGENCE_FAILURE_COST:
                 ec[i,j] = sol.energy_cost
                 pd[i,j] = sol.pursuit_duration
@@ -59,7 +60,7 @@ def calculate_cost_tables(fork_length, focal_current_speed, temperature, taskid,
                 ec[i,j] = np.nan
                 pd[i,j] = np.nan
             if IS_MAC:
-                print("Solution {0} of {1}: For fl={2:.1f} cm, fcs={3:.1f} cm/s, t={4:.1f} C, at x={7:.2f} and y={8:.2f}, energy cost is {5:.5f} J and pursuit duration is {6:.3f} s.".format(count, len(xs)*len(ys), fork_length, focal_current_speed, temperature, sol.energy_cost, sol.pursuit_duration, xs[i], ys[j]))
+                print("Solution {0} of {1}: For fl={2:.1f} cm, fv={3:.1f} cm/s, pv={4:.1f} C, at x={7:.2f} and y={8:.2f}, energy cost is {5:.5f} J and pursuit duration is {6:.3f} s.".format(count, len(xs)*len(ys), fork_length, focal_velocity, prey_velocity, sol.energy_cost, sol.pursuit_duration, xs[i], ys[j]))
             if count % 11 == 0:
                 dbcursor.execute("UPDATE maneuver_model_tasks SET progress={0} WHERE taskid={1}".format(count/final_count, taskid))
             count += 1 
@@ -97,45 +98,40 @@ def calculate_cost_tables(fork_length, focal_current_speed, temperature, taskid,
     pd = np.concatenate([np.flip(pd[:,:4], axis=1), pd], axis=1)
     return ec, pd, xs, ys
 
-def save_cost_tables(ec, pd, xs, ys, fl, fcs, t):
+def save_cost_tables(ec, pd, xs, ys, fl, fv, pv):
     if IS_MAC:
         base_folder = os.path.join(os.path.sep, 'Users', 'Jason', 'Desktop', 'Maneuver Sheet Test')
     else:
         base_folder = os.path.join(os.path.sep, 'home', 'alaskajn', 'new_maneuver_tables')
-    folder = os.path.join(base_folder, "fl_{0}".format(fl), "fcs_{0}".format(fcs), "t_{0}".format(t))
+    folder = os.path.join(base_folder, "fl_{0}".format(fl), "fv_{0}".format(fv), "pv_{0}".format(pv))
     if not os.path.exists(folder):
         os.makedirs(folder)    
     def save_cost_table(costs, xs, ys, filename):
         costs_labeled = np.insert(np.insert(costs, 0, xs, axis=1), 0, np.insert(ys, 0, np.nan), axis=0) # add y labels along horizontal axis, x along vertical axis
-        np.savetxt(os.path.join(folder, filename), costs_labeled, fmt='%.5f,')
+        np.savetxt(os.path.join(folder, filename), costs_labeled, fmt='%.7f,')
     save_cost_table(ec, xs, ys, 'energy_cost.csv')
     save_cost_table(pd, xs, ys, 'pursuit_duration.csv')
         
 try:
     db = pymysql.connect(host="troutnut.com", port=3306, user="jasonn5_calibtra", passwd="aVoUgLJyKo926", db="jasonn5_calibration_tracking", autocommit=True)
     cursor = db.cursor()
-    select_query = "SELECT taskid, temperature, fork_length, focal_current_speed FROM maneuver_model_tasks WHERE start_time IS NULL"
+    select_query = "SELECT taskid, fork_length, focal_velocity, prey_velocity FROM maneuver_model_tasks WHERE start_time IS NULL"
     cursor.execute(select_query)
     task_data = cursor.fetchone()
     while task_data is not None:
-        taskid, temperature, fork_length, focal_current_speed = task_data
+        taskid, fork_length, focal_velocity, prey_velocity = task_data
         instance_id = 'my_laptop' if IS_MAC else uname()[1]
         print("Beginning task {0}.".format(taskid))
-        # cursor.execute("UPDATE maneuver_model_tasks SET start_time=NOW(), machine='{1}', progress=0.0 WHERE taskid={0}".format(taskid, instance_id))
-        ec, pd, xs, ys = calculate_cost_tables(fork_length, focal_current_speed, temperature, taskid, cursor)
-        task_data = None # DELETE THIS AFTER
-        # save_cost_tables(ec, pd, xs, ys, fork_length, focal_current_speed, temperature)
-        # cursor.execute("UPDATE maneuver_model_tasks SET completion_time=NOW(), progress=NULL WHERE taskid={0}".format(taskid))
-        # cursor.execute(select_query)
-        # task_data = cursor.fetchone() # keep fetching new tasks until interrupted
+        cursor.execute("UPDATE maneuver_model_tasks SET start_time=NOW(), machine='{1}', progress=0.0 WHERE taskid={0}".format(taskid, instance_id))
+        ec, pd, xs, ys = calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, cursor)
+        save_cost_tables(ec, pd, xs, ys, fork_length, focal_velocity, prey_velocity)
+        cursor.execute("UPDATE maneuver_model_tasks SET completion_time=NOW(), progress=NULL WHERE taskid={0}".format(taskid))
+        cursor.execute(select_query)
+        task_data = cursor.fetchone() # keep fetching new tasks until interrupted
 except Exception as e:
     traceback.print_exc()
 finally:
     db.close()
-    
-    
-    
-    
-    
-# MORNING TO-DO
-# 2. Build the process-launching code for the UGA cloud, using just one core per virtual machine and launching a crapton after verifying that the first few work. Make sure it calls Python 2.7.
+
+
+

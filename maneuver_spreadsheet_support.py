@@ -66,50 +66,56 @@ from scipy.interpolate import RectBivariateSpline
 # I'm putting the database query inside the second but not third level of the nested list, to strike the balance between
 # query size and query count
 
-temperatures = range(1, 24+1, 1) # 1 to 24 in intervals of 1 C
-fork_lengths = list(np.concatenate([np.arange(3,5,0.2),np.arange(5,10,0.5),np.arange(10,20,1),np.arange(20,67,2)]))
-current_speeds = range(1, 82, 2) # goes from 1 to 81 in 5-cm/s intervals
-time_per_number = 2.7   # seconds required to compute one cell in the spreadsheet, long-term average (mean sheet time * 60 / 665)
-bytes_per_number = 9.8   # bytes required to store one cell in the spreadsheet 
-numbers_per_sheet = 1144  # number of cells in each sheet, based on the resolution
-cost_per_hour = 0 # for uga cluster; 0.05   # t2 micro spot instance (vs 0.0058 for t2 nano ondemand, or 0.0116 for t2 micro ondemand)
-max_instances = 40
-# cost goes up to 0.05 / hour for T2 unlimited
+fork_lengths = list(np.concatenate([np.arange(3,5,0.2),np.arange(5,10,0.5),np.arange(10,20,1),np.arange(20,57,2),np.arange(58,80,3)]))
+time_per_number = 4.0   # seconds required to compute one cell in the spreadsheet
+bytes_per_number = 9.8   # bytes required to store one cell in the spreadsheet
+max_instances = 50
+numbers_per_sheet = 609  # number of cells in each sheet, based on the resolution #todo add actual value here
+#todo replace temperature and cs with focal and prey velocities
+
+
+# Basing max focal velocity on a linear interpolation boundary from 30 cm/s at 3 cm fork length up to 120 cm/s at 80 cm body length
+# max_fv = 90/77 * fl + 2040 / 77
+# because it's all approx, max_fv = 1.2 * fl + 30
 
 queries = []
 total_sheets = 0
 total_bytes = 0
 total_time = 0
+all_velocities = list(np.concatenate([np.arange(1,19,2), np.arange(19, 40, 3), np.arange(40, 90, 5), np.arange(90,166,15)]))
 for fl in fork_lengths:
-    for cs in current_speeds:
+    print("Generating queries for fork length ",fl)
+    focal_velocities = [v for v in all_velocities if v < 1.2 * fl + 30]
+    for fv in focal_velocities:
+        prey_velocities = [v for v in all_velocities if 0.5 * fv < v < 2.0 * fl + 40]
         valuestr = ""
-        for t in temperatures:
-            fish = maneuveringfish.ManeuveringFish(fl, cs, t, 0.0, 2.4 * fl + 40, 0.0, False, 0.1, False, False)
-            if cs < fish.u_ms:
-                total_sheets += 1
-                total_bytes += bytes_per_number * numbers_per_sheet
-                total_time += time_per_number * numbers_per_sheet
-                valuestr += "({0:.1f},{1:.1f},{2:.1f}),".format(t, fl, cs)
-        query = "INSERT INTO maneuver_model_tasks (temperature, fork_length, focal_current_speed) VALUES " + valuestr[:-1]
+        for pv in prey_velocities:
+            total_sheets += 1
+            total_bytes += bytes_per_number * numbers_per_sheet
+            total_time += time_per_number * numbers_per_sheet
+            valuestr += "({0:.1f},{1:.1f},{2:.1f}),".format(fl, fv, pv)
+        query = "INSERT INTO maneuver_model_tasks (fork_length, focal_velocity, prey_velocity) VALUES " + valuestr[:-1]
         if valuestr != "":
             queries.append(query)
 total_bytes *= 2 # because there are 2 response variables
 time_per_sheet = total_time / total_sheets
-cost = max((total_time / 3600)*cost_per_hour,0) # for on-demand instances
 real_time = (total_time / 3600) / max_instances
-print("Total calculation predicted to generate {0} sheets in {1:.1f} cpu-hours ({2:.1f} min/sheet, {5:.1f} hours for {6} instances) taking {3:.1f} mb of space and costing ${4:2f}.").format(total_sheets, total_time/3600.0, time_per_sheet/60.0, total_bytes/(1024.0*1024.0), cost, real_time, max_instances)
-# New UGA numbers: Total calculation predicted to generate 39745 sheets in 34101.2 cpu-hours (51.5 min/sheet, 852.5 hours for 40 instances) taking 849.9 mb of space and costing $0.000000.
+cost = 0
+print("Total calculation predicted to generate {0} sheets in {1:.1f} cpu-hours ({2:.1f} min/sheet, {5:.1f} hours for {6} instances) taking {3:.1f} mb of space.".format(total_sheets, total_time/3600.0, time_per_sheet/60.0, total_bytes/(1024.0*1024.0), cost, real_time, max_instances))
+# Old UGA numbers (never ran): Total calculation predicted to generate 39745 sheets in 34101.2 cpu-hours (51.5 min/sheet, 852.5 hours for 40 instances) taking 849.9 mb of space and costing $0.000000.
 # Old Amazon numbers: Total calculation predicted to generate 20808 sheets in 2498.405 cpu-hours (7.2 min/sheet, 124.92025 hours for 20 instances) taking 258.6 mb of space and costing $124.920250.
+# New (3/19/2020) UGA: Total calculation predicted to generate 21500 sheets in 9997.5 cpu-hours (27.9 min/sheet, 199.9 hours for 50 instances) taking 249.2 mb of space.
+
 
 # Actually generate the to-do list in the database -- ONLY DO THIS ONCE unless I am resetting the whole thing!
 # If I do reset the whole thing, I need to do ALTER TABLE maneuver_model_tasks AUTO_INCREMENT = 1
 ##db = pymysql.connect(host="maneuver-model-tasks.crtfph6ctn2x.us-west-2.rds.amazonaws.com", port=3306, user="manmoduser", passwd="x]%o4g28", db="maneuver_model_tasks", autocommit=True)
-#db = pymysql.connect(host="troutnut.com", port=3306, user="jasonn5_calibtra", passwd="aVoUgLJyKo926", db="jasonn5_calibration_tracking", autocommit=True)
-#cursor = db.cursor()
-#for i in range(len(queries)):
+# db = pymysql.connect(host="troutnut.com", port=3306, user="jasonn5_calibtra", passwd="aVoUgLJyKo926", db="jasonn5_calibration_tracking", autocommit=True)
+# cursor = db.cursor()
+# for i in range(len(queries)):
 #    print("Running query {0} of {1}.".format(i,len(queries)))
 #    exq = cursor.execute(queries[i])
-#db.close()
+# db.close()
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------
 #                           CHECKING ACCURACY WITH WHICH SPLINE PREDICTS DIRECT MODEL PREDICTIONS and optimizing spline parameters
