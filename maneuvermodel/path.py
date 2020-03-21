@@ -103,7 +103,7 @@ class ManeuverPath(object):
             if r2 + r3 > distJtoK: return
         else: # circle 2 is clockwise
             if dir3 == -1:
-                if r2 + r3 > distJtoK: return # circle 3 is counterclockwise -- circles 2 and 3 cannot overlap at all 
+                if r2 + r3 > distJtoK: return # circle 3 is counterclockwise -- circles 2 and 3 cannot overlap at all
             else:
                 if r3 - r2 > distJtoK: return # circle 3 is clockwise -- it can overlap with but not completely contain circle 2
         # Calculate the tangent points between the second and third circle
@@ -136,7 +136,7 @@ class ManeuverPath(object):
         # Calculate arc angle for the third (final) turn
         theta3 = 0.5 * np.pi - omega
         while theta3 < 0: theta3 += twopi
-        # Now store all the relevant results in well-named variables    
+        # Now store all the relevant results in well-named variables
         self.min_turn_radius = maneuver.fish.min_turn_radius # used for plotting or otherwise displaying turn radii relative to the fish's minimum
         self.turn_1_center = np.array([Hx, Hy])
         self.turn_2_center = np.array([Jx, Jy])

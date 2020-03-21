@@ -4,7 +4,6 @@ from .maneuveringfish import ManeuveringFish
 from .path import ManeuverPath
 from .dynamics import ManeuverDynamics
 from .finalstraight import CONVERGENCE_FAILURE_COST
-from .segment import COASTING_ENABLED
 
 # Create numba types for the imported jitclasses, so I can use jitclasses as attributes of other jitclasses.
 dynamics_type = ManeuverDynamics.class_type.instance_type
@@ -239,32 +238,6 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     final_duration_a_proportional = p[10]
     # Creation solution object and return
     return Maneuver(fish, prey_velocity, r1, r2, r3, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a, final_duration_a_proportional, 1)
-
-# @jit(maneuver_type(maneuver_type, float64, float64), nopython=True)
-# def mutate_solution(solution, mutation_rate, mutation_scale):
-#     # Mutation rate (between 0 and 1) controls the probability that any given characterstic will mutate. Scale controls the variance of a normal distribution giving the mutation amount.
-#     # Mutation scale controls the variance of the distribution of the mutation size, on a proportional scale (from 0 to 1)
-#     p = solution.proportions()
-#     mutation_mask = np.ceil(np.random.rand(p.size)-(1.0-mutation_rate))                 # determines which attributes mutate at all
-#     mutation_amounts = mutation_mask * np.random.normal(0.0, mutation_scale, p.size)    # determines size of mutations
-#     mutated_p = p + mutation_amounts                                                    # create the mutated solution
-#     for i in range(p.size):                                                             # makes sure nothing mutated out of range, manually since np.clip() isn't implemented in numba yet
-#         if mutated_p[i] < 0.0: mutated_p[i] = 0.0
-#         elif mutated_p[i] > 1.0: mutated_p[i] = 1.0
-#     mutated_solution = maneuver_from_proportions(solution.fish, solution.det_x, solution.det_y, mutated_p)
-#     mutated_solution.origin = 3 # record that this solution came from mutation
-#     return mutated_solution
-
-# @jit(nopython = True)
-# def mate_solutions(fittest_parent, other_parent, mixing_ratio):
-#     # Mixing ratio determines the degree to which the child's genes are weighted toward the fittest parent's.
-#     # For example, mixing_ratio=0.6 means child's values are 60 % of the fittest parent's plus 40 % of the other parent's.
-#     fittest_p = fittest_parent.proportions()
-#     other_p = other_parent.proportions()
-#     child_p = fittest_p * mixing_ratio + other_p * (1 - mixing_ratio)
-#     child = maneuver_from_proportions(fittest_parent.fish, fittest_parent.det_x, fittest_parent.det_y, child_p)
-#     child.origin = 2
-#     return child
 
 @jit(maneuver_type(fish_type, float64, float64, float64), nopython=True)
 def random_maneuver(fish, prey_velocity, xd, yd):

@@ -46,6 +46,7 @@ class ManeuverDynamics(object):
         # Relevant attributes of the fish attribute are duplicated to avoid circular dependency among jitclasses
         #print("\nINITIALIZING DYNAMICS")
         #print("Initial pthrusts are: ", maneuver.pthrusts[0], " -- ", maneuver.pthrusts[1], " -- ", maneuver.pthrusts[2], " -- ", maneuver.pthrusts[3], " -- ", maneuver.pthrusts[4],".")
+
         fish = maneuver.fish
         self.fish_mass = fish.mass
         self.fish_rho = fish.rho
@@ -107,9 +108,6 @@ class ManeuverDynamics(object):
         else:
             self.bad_thrust_b_penalty = 0.0
 
-
-
-
         # if self.straight_3.thrust_b < min_thrust_b or self.straight_3.thrust_b > max_thrust_b:
         #     print("Straight 3 thrust b is",self.straight_3.thrust_b,"which is outside allowed interval (",min_thrust_b,",",max_thrust_b,")")
 
@@ -124,37 +122,7 @@ class ManeuverDynamics(object):
         # This SHOULD automatically constrain the thrust in segment B, since it is determined by t_a.
 
         maneuver.path.update_with_straight_3_length(self.straight_3.length)
-        #
-        # # Penalize excessively fast changes in acceleration, i.e. "Jerk penalties"
-        # if straight_3.duration_a * straight_3.duration_b > 0:
-        #     self.jerk_penalty = 0.0
-        #     jerks = np.empty(7) # doesn't contain actual jerk values, but off by a factor of c and abs(), built into the c array and applied when testing threshold
-        #     c = np.empty(7)
-        #     squared_thrusts = maneuver.thrusts ** 2  # Makes this process limit real thrust in force units (or a constant multiple thereof), not "thrust" in equilibrated speed units
-        #     c[0] = 0.5 * fish.rho * fish.area * Cd(fish.total_length, (v + maneuver.thrusts[0])/2) * fish.webb_factor # constant described as "c" in the paper, relates thrust to actual acceleration
-        #     c[1] = 0.5 * fish.rho * fish.area * Cd(fish.total_length, (maneuver.thrusts[0] + maneuver.thrusts[1]) / 2) * fish.webb_factor  # constant described as "c" in the paper, relates thrust to actual acceleration
-        #     c[2] = 0.5 * fish.rho * fish.area * Cd(fish.total_length, (maneuver.thrusts[1] + maneuver.thrusts[2]) / 2) * fish.webb_factor  # constant described as "c" in the paper, relates thrust to actual acceleration
-        #     c[3] = 0.5 * fish.rho * fish.area * Cd(fish.total_length, (maneuver.thrusts[2] + maneuver.thrusts[3]) / 2) * fish.webb_factor  # constant described as "c" in the paper, relates thrust to actual acceleration
-        #     c[4] = 0.5 * fish.rho * fish.area * Cd(fish.total_length, (maneuver.thrusts[3] + maneuver.thrusts[4]) / 2) * fish.webb_factor  # constant described as "c" in the paper, relates thrust to actual acceleration
-        #     c[5] = 0.5 * fish.rho * fish.area * Cd(fish.total_length, (maneuver.thrusts[4] + straight_3.thrust_a) / 2) * fish.webb_factor  # constant described as "c" in the paper, relates thrust to actual acceleration
-        #     c[6] = 0.5 * fish.rho * fish.area * Cd(fish.total_length, (straight_3.thrust_a + straight_3.thrust_b) / 2) * fish.webb_factor  # constant described as "c" in the paper, relates thrust to actual acceleration
-        #     # print(c[3]) ballpark value for a large fish is around 20, ranging from 10 to 70
-        #     jerks[0] = abs(squared_thrusts[0] - v) / turn_1.duration
-        #     jerks[1] = abs(squared_thrusts[1] - squared_thrusts[0]) / straight_1.duration
-        #     jerks[2] = abs(squared_thrusts[2] - squared_thrusts[1]) / turn_2.duration
-        #     jerks[3] = abs(squared_thrusts[3] - squared_thrusts[2]) / straight_2.duration
-        #     jerks[4] = abs(squared_thrusts[4] - squared_thrusts[3]) / turn_3.duration
-        #     jerks[5] = abs(straight_3.thrust_a**2 - squared_thrusts[4]) / straight_3.duration_a
-        #     jerks[6] = abs(straight_3.thrust_b**2 - straight_3.thrust_a**2) / straight_3.duration_b
-        #     max_allowed_jerk = 35 # approximate max allowed change in acceleration, m/s^3 -- based on looking at
-        #     for i in range(7):
-        #         max_allowed = max_allowed_jerk / c[i]
-        #         #print('jerk i was',jerks[i],'vs max allowed of',max_allowed)
-        #         if jerks[i] > max_allowed:
-        #             self.jerk_penalty += 0.0001*(jerks[i] - max_allowed)
-        # else:
-        #     self.jerk_penalty = 9999999999999 # just to invalidate solutions in which one of the straight 3 durations is 0
-        # ManeuverFinalSegment needs attributes cost, duration, length
+
         self.wait_duration = maneuver.path.wait_length / maneuver.mean_water_velocity
         self.pursuit_duration = self.turn_1.duration + self.straight_1.duration
         self.return_duration = self.turn_2.duration + self.straight_2.duration + self.turn_3.duration + self.straight_3.duration
@@ -165,14 +133,12 @@ class ManeuverDynamics(object):
         self.opportunity_cost = fish.NREI * (self.wait_duration + self.pursuit_duration)                                 # cost of not searching during the wait/pursuit
         self.total_cost = self.energy_cost + self.opportunity_cost
 
-
         # TODO list (most recent, I guess?)
         # Do more convergence tests of the algorithm to avoid wasting iterations on bad maneuvers
         # Change fitness function to ignore "fitness" and just return energy cost, flip signs accordingly in cuckoo
         # Test cuckoo parameters for consistency, convergence with a high enough number of iterations
 
         # Todo for maximum acceleration, look at smoothed real maneuver tracks and plot max acceleration
-
 
     def min_next_thrust(self, previous_speed, is_not_final_a):
         threshold = 100  # maximum allowed absolute value of acceleration... and remember this is cm/s^2!!

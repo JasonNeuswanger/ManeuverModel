@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import sys
 from platform import uname
 import pymysql
 import traceback
@@ -82,7 +83,7 @@ def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, db
                     if ratio_to_median < 1/worst_allowable_ratio or ratio_to_median > worst_allowable_ratio:
                         for retry in range(5): # If we didn't get reasonable values the first time, try again up to 5 times with more rigorous but time-consuming algorithm parameters
                             dbcursor.execute("UPDATE maneuver_model_tasks SET retries=retries+1 WHERE taskid={0}".format(taskid))
-                            sol = optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D=(xs[i], ys[j], 0.0), n=50, iterations=3000, p_a=0.25, suppress_output=True)
+                            sol = optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D=(xs[i], ys[j], 0.0), n=100, iterations=3000+retry*2000, p_a=0.25, suppress_output=True)
                             if sol.energy_cost < ec[i,j]:
                                 ec[i,j] = sol.energy_cost
                                 pd[i,j] = sol.pursuit_duration
@@ -90,6 +91,7 @@ def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, db
                                 if 1/worst_allowable_ratio <= ratio_to_median <= worst_allowable_ratio:
                                     break
                         if ratio_to_median < 1/worst_allowable_ratio or ratio_to_median > worst_allowable_ratio:
+                            print("Retries to match neighbors failed for x={0}, y={1} with fl={2}, fv={3}, pv={4}. ratio_to_median={5}".format(xs[i], ys[j], fork_length, focal_velocity, prey_velocity, ratio_to_median), file=sys.stderr)
                             dbcursor.execute("UPDATE maneuver_model_tasks SET has_failed_retries=1 WHERE taskid={0}".format(taskid))
     # Now add on the mirror image of the first 4 columns to each extrapolation, with negative y values, to facilitate smooth interpolation near y=0
     ys = np.concatenate([np.flip(-ys[:4], axis=0), ys])
