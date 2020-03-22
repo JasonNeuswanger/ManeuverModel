@@ -67,30 +67,36 @@ class ManeuverFinalStraight(object):
         # We need a common value of Cd for both segments, or all the math gets way more complicated mixing constants from segments A and B into each.
         # The times when this will be most important are when the fish is using a long segment A to catch up to its focal point. In that case,
         # we would expect thrust_a to be the best approximation of the speed the fish is moving most of the time and the most relevant to the drag factor.
-        Cd_a_and_b = Cd(fish.total_length, thrust_a)
-        self.tau_times_thrust = fish.mass / (fish.rho * fish.webb_factor * ALPHA * fish.area * Cd_a_and_b) # constant for these segments since not turning
-        self.thrust_a = thrust_a
-        tau_a = self.tau_times_thrust / self.thrust_a
-        # Compute the bounds on t_a, the t_a_range_min restricting search to where the functions (for both min and max) can converge
-        v = self.mean_water_velocity
-        ut3 = self.initial_speed
-        ua = self.thrust_a
-        self.t_a_range_min = 0.0 if ut3 > ua else max(0.0, (self.tau_times_thrust*np.log(((ua - ut3)*(ua + v))/((ua + ut3)*(ua - v))))/ua)
-        self.min_t_a = self.compute_min_t_a() # have to do min before max, then use min to set initial guess for max for best convergence
-        self.max_t_a = self.compute_max_t_a()
-        self.duration_a = self.min_t_a + (self.max_t_a - self.min_t_a) * duration_a_proportional
-        # Compute the rest of segment a, then b
-        self.length_a = s_t(self.initial_speed, thrust_a, self.duration_a, tau_a)
-        self.final_speed_a = u_t(self.initial_speed, thrust_a, self.duration_a, tau_a)
-        if self.compute_segment_b():
-            self.duration = self.duration_a + self.duration_b
-            self.length = self.length_a + self.length_b
-            self.compute_costs()
-            if can_plot: self.compute_plot_components()
-            self.creation_succeeded = True
-        else: # If segment B failed to converge (typically because final_speed_a < 1.002 * water_velocity, or required u_b = v) just give this solution high costs to be ignored
-            self.convergence_failed()
-        
+        try:
+            Cd_a_and_b = Cd(fish.total_length, thrust_a)
+            self.tau_times_thrust = fish.mass / (fish.rho * fish.webb_factor * ALPHA * fish.area * Cd_a_and_b) # constant for these segments since not turning
+            self.thrust_a = thrust_a
+            tau_a = self.tau_times_thrust / self.thrust_a
+            # Compute the bounds on t_a, the t_a_range_min restricting search to where the functions (for both min and max) can converge
+            v = self.mean_water_velocity
+            ut3 = self.initial_speed
+            ua = self.thrust_a
+            self.t_a_range_min = 0.0 if ut3 > ua else max(0.0, (self.tau_times_thrust*np.log(((ua - ut3)*(ua + v))/((ua + ut3)*(ua - v))))/ua)
+            self.min_t_a = self.compute_min_t_a() # have to do min before max, then use min to set initial guess for max for best convergence
+            self.max_t_a = self.compute_max_t_a()
+            self.duration_a = self.min_t_a + (self.max_t_a - self.min_t_a) * duration_a_proportional
+            # Compute the rest of segment a, then b
+            self.length_a = s_t(self.initial_speed, thrust_a, self.duration_a, tau_a)
+            self.final_speed_a = u_t(self.initial_speed, thrust_a, self.duration_a, tau_a)
+        except Exception:
+            print("Exception caught when calculating segment A of ManeuverFinalStraight in finalstraight.py")
+        try:
+            if self.compute_segment_b():
+                self.duration = self.duration_a + self.duration_b
+                self.length = self.length_a + self.length_b
+                self.compute_costs()
+                if can_plot: self.compute_plot_components()
+                self.creation_succeeded = True
+            else: # If segment B failed to converge (typically because final_speed_a < 1.002 * water_velocity, or required u_b = v) just give this solution high costs to be ignored
+                self.convergence_failed()
+        except Exception:
+            print("Exception caught when calculating segment B of ManeuverFinalStraight in finalstraight.py")
+
     def convergence_failed(self):
         self.duration = CONVERGENCE_FAILURE_COST
         self.length = CONVERGENCE_FAILURE_COST

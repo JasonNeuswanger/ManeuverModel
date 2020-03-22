@@ -34,18 +34,6 @@ for i in range(N_NODES):
     echo "Cores:  $PBS_NP"
     echo "Nodes:  $(cat $PBS_NODEFILE | sort -u | tr '\n' ' ')"
     echo
-
-    echo "Python path is: "
-    printenv PYTHONPATH
-    
-    echo "Python version is: "
-    python3 --version
-    
-    echo "Output from 'which pip' is: "
-    which pip
-
-    echo "Output from 'pip list' is: "
-    pip list
     
     python3 maneuver_spreadsheet_creation.py
     """.format(cores=CORES_PER_NODE, job_name=JOB_NAME)

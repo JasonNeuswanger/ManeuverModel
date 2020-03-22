@@ -95,26 +95,30 @@ class ManeuverDynamics(object):
         # -------------------------
 
         # Now that the end of turn 3 is somewhere downstream of the focal point, calculate the final straight to catch up to it
-
-        x_p, t_p = self.penultimate_point(maneuver)
-
-        self.straight_3 = ManeuverFinalStraight(fish, self.v, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a, maneuver.final_duration_a_proportional, False)
-        if not self.straight_3.creation_succeeded:
-            maneuver.convergence_failure_code = 2
-            self.energy_cost = CONVERGENCE_FAILURE_COST
-            self.total_cost = CONVERGENCE_FAILURE_COST
-            return
+        try:
+            x_p, t_p = self.penultimate_point(maneuver)
+            self.straight_3 = ManeuverFinalStraight(fish, self.v, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a, maneuver.final_duration_a_proportional, False)
+            if not self.straight_3.creation_succeeded:
+                maneuver.convergence_failure_code = 2
+                self.energy_cost = CONVERGENCE_FAILURE_COST
+                self.total_cost = CONVERGENCE_FAILURE_COST
+                return
+        except Exception:
+            print("Exception caught when creating ManeuverFinalStraight in ManeuverDynamics.__init__.")
 
         # Compute a penalty on the solution if acceleration at the start of segment B of the final straight is over the limit, because the way it's calculated
-        # makes it computationally infeasible to restrict this a priori. This way we let the optimization algorithm do the heavy lifting for this one constraint.
-        threshold = 100  # maximum allowed absolute value of acceleration... and remember this is cm/s^2!!
-        tau_times_thrust = self.fish_mass / (self.fish_rho * self.fish_webb_factor * ALPHA * self.fish_area * Cd(self.fish_total_length, (self.straight_3.final_speed_a + self.v) / 2))
-        min_thrust_b = max(0.0, np.sqrt(-2 * threshold * tau_times_thrust + self.straight_3.final_speed_a ** 2) if threshold < self.straight_3.final_speed_a ** 2 / (2. * tau_times_thrust) else 0.0)
-        min_penalty = 0.5 # at least 50 % cost penalty for having bad thrust b
-        if self.straight_3.thrust_b < min_thrust_b:
-            self.bad_thrust_b_penalty = min_penalty + (min_thrust_b - self.straight_3.thrust_b) # beyond the min, use a penalty proportional to the difference to help gide the algorithm
-        else:
-            self.bad_thrust_b_penalty = 0.0
+        # makes it computationally infeasible to restrict this a priori. This way we let the optimization algorithm do the heavy lifting for this one constraint
+        try:
+            threshold = 100  # maximum allowed absolute value of acceleration... and remember this is cm/s^2!!
+            tau_times_thrust = self.fish_mass / (self.fish_rho * self.fish_webb_factor * ALPHA * self.fish_area * Cd(self.fish_total_length, (self.straight_3.final_speed_a + self.v) / 2))
+            min_thrust_b = max(0.0, np.sqrt(-2 * threshold * tau_times_thrust + self.straight_3.final_speed_a ** 2) if threshold < self.straight_3.final_speed_a ** 2 / (2. * tau_times_thrust) else 0.0)
+            min_penalty = 0.5 # at least 50 % cost penalty for having bad thrust b
+            if self.straight_3.thrust_b < min_thrust_b:
+                self.bad_thrust_b_penalty = min_penalty + (min_thrust_b - self.straight_3.thrust_b) # beyond the min, use a penalty proportional to the difference to help gide the algorithm
+            else:
+                self.bad_thrust_b_penalty = 0.0
+        except Exception:
+            print("Exception caught in ManeuverDynamics.__init__ when computing penalties for excessive acceleration at the start of segment B.")
 
         # if self.straight_3.thrust_b < min_thrust_b or self.straight_3.thrust_b > max_thrust_b:
         #     print("Straight 3 thrust b is",self.straight_3.thrust_b,"which is outside allowed interval (",min_thrust_b,",",max_thrust_b,")")
