@@ -38,7 +38,7 @@ for i in range(N_NODES):
     echo "Python path is: "
     printenv PYTHONPATH
     
-    echo "Python version is"
+    echo "Python version is: "
     python3 --version
 
     python3 maneuver_spreadsheet_creation.py
