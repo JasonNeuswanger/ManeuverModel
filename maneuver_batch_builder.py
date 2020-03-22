@@ -37,6 +37,9 @@ for i in range(N_NODES):
 
     echo "Python path is: "
     printenv PYTHONPATH
+    
+    print "Python version is"
+    python3 --version
 
     python3 maneuver_spreadsheet_creation.py
     """.format(cores=CORES_PER_NODE, job_name=JOB_NAME)
