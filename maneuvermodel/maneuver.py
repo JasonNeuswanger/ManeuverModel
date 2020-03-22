@@ -116,7 +116,10 @@ class Maneuver(object):
                     
     def calculate_fitness(self):
         self.fish.fEvals += 1
-        self.path = ManeuverPath(self)
+        try:
+            self.path = ManeuverPath(self)
+        except Exception:
+            print("Exception when initially creating path in maneuver.py calculate_fitness().")
         # Most path constraints are handled in validate_for_fish() above, but compatibility of r2 and r3 depends on 
         # the distance between points J and K which isn't know until the path is partly calculated. So its initialization
         # function checks that and returns prematurely with an attribute indicating failure if they're incompatible.
@@ -235,8 +238,9 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     # Set all the proportional thrusts
     pthrusts = p[:6]
     # Set turn radii
+    # todo check maxes for real maneuvers and see what comes out
     max_turn_radius = 15 * fish.min_turn_radius # ARBITRARY GUESS, CONSTRAIN BASED ON SOLUTIONS
-    max_r1 = min(0.5 * (xc ** 2 / yc + yc) - 0.01, max_turn_radius)  # subtract 0.01 cm (0.1 mm) so pursuit turn cannot encompass the capture point and cause divide-by-zero errors
+    max_r1 = min(0.5 * (xc ** 2 / yc + yc) - 0.0001, max_turn_radius)  # subtract 0.0001 cm (0.001 mm) so pursuit turn cannot encompass the capture point and cause divide-by-zero errors
     min_r1 = min(fish.min_turn_radius, max_r1)  # allow r1 to shrink beyond the min turn radius if necessary to not collide with the capture point
     r1 = value_from_proportion(p[5], min_r1, max_r1, no_min_weight) # use max_r1 as r1 for head-snap maneuvers
     r2 = value_from_proportion(p[6], fish.min_turn_radius, max_turn_radius, no_min_weight)

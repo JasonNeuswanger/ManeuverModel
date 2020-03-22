@@ -24,39 +24,82 @@ import timeit, time
 #                                                                                                   #
 #---------------------------------------------------------------------------------------------------#
 
-typical = {'Chinook Salmon': {'fork_length': 4.6, 'focal_velocity': 10, 'prey_velocity': 11, 'mass': 0.85, 'temperature': 9, 'max_thrust': 62, 'NREI': 0.017, 'detection_distance': 8, 'SMR': 226},
-           'Dolly Varden': {'fork_length': 18, 'focal_velocity': 28, 'prey_velocity': 29, 'mass': 51, 'temperature': 10, 'max_thrust': 94, 'NREI': 0.017, 'detection_distance': 17, 'SMR': 52},
-           'Arctic Grayling': {'fork_length': 43, 'focal_velocity': 42, 'prey_velocity': 48, 'mass': 920, 'temperature': 6, 'max_thrust': 159, 'NREI': 0.017, 'detection_distance': 35, 'SMR': 40}
-           }
-
-def create_typical_fish(species): # typical fish
-    return maneuveringfish.ManeuveringFish(fork_length = typical[species]['fork_length'],
-                                           focal_velocity = typical[species]['focal_velocity'],
-                                           mass = typical[species]['mass'],
-                                           temperature = typical[species]['temperature'],
-                                           SMR = typical[species]['SMR'],
-                                           max_thrust = typical[species]['max_thrust'],
-                                           NREI = typical[species]['NREI'],
-                                           use_total_cost = False,
-                                           disable_wait_time = False)
-typical_fish = {}
-typical_fish['Chinook Salmon'] = create_typical_fish('Chinook Salmon')
-typical_fish['Dolly Varden'] = create_typical_fish('Dolly Varden')
-typical_fish['Arctic Grayling'] = create_typical_fish('Arctic Grayling')
-
-def typical_maneuver(species, **kwargs):
-    fish = typical_fish[species]
-    default_detection_point_3D = (-typical[species]['detection_distance']/1.414, typical[species]['detection_distance']/1.414, 0.0)
-    detection_point_3D = kwargs.get('detection_point_3D', default_detection_point_3D)
-    prey_velocity = typical[species]['prey_velocity']
-    return optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, n=kwargs.get('n', 25), iterations=kwargs.get('iterations', 1000), suppress_output=kwargs.get('suppress_output', False))
+# typical = {'Chinook Salmon': {'fork_length': 4.6, 'focal_velocity': 10, 'prey_velocity': 11, 'mass': 0.85, 'temperature': 9, 'max_thrust': 62, 'NREI': 0.017, 'detection_distance': 8, 'SMR': 226},
+#            'Dolly Varden': {'fork_length': 18, 'focal_velocity': 28, 'prey_velocity': 29, 'mass': 51, 'temperature': 10, 'max_thrust': 94, 'NREI': 0.017, 'detection_distance': 17, 'SMR': 52},
+#            'Arctic Grayling': {'fork_length': 43, 'focal_velocity': 42, 'prey_velocity': 48, 'mass': 920, 'temperature': 6, 'max_thrust': 159, 'NREI': 0.017, 'detection_distance': 35, 'SMR': 40}
+#            }
+#
+# def create_typical_fish(species): # typical fish
+#     return maneuveringfish.ManeuveringFish(fork_length = typical[species]['fork_length'],
+#                                            focal_velocity = typical[species]['focal_velocity'],
+#                                            mass = typical[species]['mass'],
+#                                            temperature = typical[species]['temperature'],
+#                                            SMR = typical[species]['SMR'],
+#                                            max_thrust = typical[species]['max_thrust'],
+#                                            NREI = typical[species]['NREI'],
+#                                            use_total_cost = False,
+#                                            disable_wait_time = False)
+# typical_fish = {}
+# typical_fish['Chinook Salmon'] = create_typical_fish('Chinook Salmon')
+# typical_fish['Dolly Varden'] = create_typical_fish('Dolly Varden')
+# typical_fish['Arctic Grayling'] = create_typical_fish('Arctic Grayling')
+#
+# def typical_maneuver(species, **kwargs):
+#     fish = typical_fish[species]
+#     default_detection_point_3D = (-typical[species]['detection_distance']/1.414, typical[species]['detection_distance']/1.414, 0.0)
+#     detection_point_3D = kwargs.get('detection_point_3D', default_detection_point_3D)
+#     prey_velocity = typical[species]['prey_velocity']
+#     return optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, n=kwargs.get('n', 25), iterations=kwargs.get('iterations', 1000), suppress_output=kwargs.get('suppress_output', False))
 
 #fittest = typical_maneuver('Dolly Varden', iterations=1000)
 #visualize.summarize_solution(fittest, display = True, title = 'Typical Dolly', export_path = None, detailed=True)
 
 # stretch = typical_maneuver('Dolly Varden', iterations=1000, detection_point_3D=(238.2,600,0), suppress_output=True) # does not converge
-stretch = typical_maneuver('Dolly Varden', iterations=1000, detection_point_3D=(238.1,600,0), suppress_output=True) # does converge
+# stretch = typical_maneuver('Dolly Varden', iterations=1000, detection_point_3D=(238.1,600,0), suppress_output=True) # does converge
 # visualize.summarize_solution(stretch, display = True, title = 'Typical Dolly', export_path = None, detailed=True)
+# stretch = typical_maneuver('Dolly Varden', iterations=1000, detection_point_3D=(10,-0.001,0), suppress_output=True) # gives ZeroDivisionError
+
+
+from maneuvermodel import maneuver, segment, maneuveringfish, optimize_cuckoo, visualize, dynamics
+
+
+def check_cost_table_value(fork_length, focal_velocity, prey_velocity, xd, yd, display=False, suppress_output=False):
+    max_thrust = 2.4 * fork_length + 40
+    fish_mass = 0.0 # this input defaults the model to a rainbow trout length-mass regression
+    fish_SMR = 0.0  # unused in this case
+    fish_NREI = 0.0 # also unused in this case
+    temperature = 10 # also unused in this case
+    use_total_cost = False
+    disable_wait_time = False
+    fish = maneuveringfish.ManeuveringFish(fork_length, focal_velocity, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
+    detection_point_3D = (xd, yd, 0.0)
+    maneuver = optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, n=25, iterations=1000, suppress_output=suppress_output)
+    visualize.summarize_solution(maneuver, display=display, title='Cost Table Check', export_path=None, detailed=True)
+    return maneuver
+
+man = check_cost_table_value(3, 7, 40, -0.1, 0.7, display=True, suppress_output=False) # 0.8 cm works, 0.7 cm doesn't
+
+# fish's min_turn_radius is 0.54213
+
+# r1 min and max are  0.40615  and  0.40615 -- in the working one (0.8)
+# r1 min and max are  0.3570428571428571  and  0.3570428571428571 -- in the non-working one (0.7)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # This is a pretty substantial difference in energy cost based on the arbitrary acceleration threshold.
@@ -104,8 +147,8 @@ stretch = typical_maneuver('Dolly Varden', iterations=1000, detection_point_3D=(
 # Lowest energy cost after 10000 CS iterations (  667831 evaluations) was   0.002466 joules (thrust penalty 0.0). Mean speed 13.4 cm/s,  2.74 bodylengths/s. Metabolic rate   297.9 mg O2/kg/hr ( 2.3X SMR).
 # What a freeaking mess.... it just doesn't converge at all.
 
-print("Optimizing a maneuver...")
-fittest = typical_maneuver('Chinook Salmon', iterations=100)
+# print("Optimizing a maneuver...")
+# fittest = typical_maneuver('Chinook Salmon', iterations=100)
 #visualize.summarize_solution(fittest, display = True, title = 'Typical Chinook', export_path = None, detailed=True)
 
 # for i in range(10):

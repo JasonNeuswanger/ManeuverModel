@@ -5,17 +5,11 @@ from .maneuveringfish import swimming_activity_cost
 
 EXP_OVERFLOW_THRESHOLD = 650 # value beyond which exp(value) overflows to inf in float64 arithmetic, using 650 to pad vs real limit of 750 so other operations don't overflow
 ALPHA = 4
-COASTING_ENABLED = False
 
 # I'm making functions the ManeuverSegment and FinalManeuverSegment have in common be separate jitfunctions outside the 
 # main jitclasses, so that I'm not duplicating the same thing within the file. Normally I would use subclassing for this,
 # but that's not supported in jitclasses.
 
-@jit(int64(float64, boolean), nopython=True)
-def alpha(u_f, is_turn):
-    is_coasting = COASTING_ENABLED and (u_f <= 0.1) and not is_turn # if moving on a straight and u_f <= 0.1 cm/s, fish is coasting
-    return 1 if is_coasting else ALPHA # value of 4 comes from Webb 1991; Videler and Weihs 1982 used 3
-    
 @jit(float64(float64, float64, float64, float64), nopython=True)
 def t_u(u_i, u_f, u, tau): # tu = time required to attain target speed u after beginning at speed u_i with thrust u_f
     if u_i == u_f: # move at constant speed u_i = u_f
@@ -79,6 +73,7 @@ maneuver_segment_spec = [
     ('fish_SMR',float64),
     ('fish_webb_factor',float64),
     ('fish_u_crit',float64),
+    ('turn_factor',float64),
     ('duration',float64),
     ('plottimes',optional(float64[:])),
     ('plotspeeds',optional(float64[:])),
@@ -94,6 +89,8 @@ maneuver_segment_spec = [
 class ManeuverSegment(object):
     
     def __init__(self, fish, length, u_i, u_thrust, is_turn, radius, can_plot):
+        if self.is_turn and self.radius == 0:
+            print("Cannot have a turn radius of 0!")
         self.length = length
         self.u_i = u_i
         self.u_thrust = u_thrust
@@ -109,8 +106,10 @@ class ManeuverSegment(object):
         self.fish_temperature = fish.temperature
         self.fish_SMR = fish.SMR
         self.fish_u_crit = fish.u_crit
-        self.fish_webb_factor = fish.webb_factor # Not really fish-specific, but avoids segment-specific reduction for coasting
+        self.fish_webb_factor = fish.webb_factor
         self.Cd = Cd(fish.total_length, (u_i + u_thrust) / 2.0)
+        self.turn_factor = 1 if not self.is_turn else np.sqrt(1 + (2 * self.fish_volume * (1 + self.fish_waterlambda) / (self.radius * self.fish_area * self.Cd * ALPHA * self.fish_webb_factor))**2)
+        # self.turn_factor = 1 if not self.is_turn else 1 + 0.5 * (self.turn_factor - 1) # PERTURBATION FOR SENSITIVITY ANALYSIS ONLY
         # Initial values of final stats
         self.duration = 0.0
         self.final_speed = 0.0
@@ -118,29 +117,14 @@ class ManeuverSegment(object):
         # Compute the dynamics once everything is set
         self.calculate_dynamics()
 
-    def turn_factor(self, u_f):
-        if not self.is_turn:
-            return 1
-        else:
-            turn_factor = np.sqrt(1 + (2 * self.fish_volume * (1 + self.fish_waterlambda) / (self.radius * self.fish_area * self.Cd * alpha(u_f, self.is_turn) * self.webb_factor(u_f)))**2)
-            return turn_factor 
-            # return 1 + 0.5 * (turn_factor - 1) # PERTURBATION FOR SENSITIVITY ANALYSIS ONLY
-
-    def webb_factor(self, u_f):
-        is_coasting = COASTING_ENABLED and (u_f <= 0.1) and not self.is_turn
-        return 1 if is_coasting else self.fish_webb_factor
-
     def tau(self, u_f):
-        c = 0.5 * self.fish_rho * self.webb_factor(u_f) * alpha(u_f, self.is_turn) * self.fish_area * self.Cd
+        c = 0.5 * self.fish_rho * self.fish_webb_factor * ALPHA * self.fish_area * self.Cd
         return self.fish_mass / (2 * c * u_f)
             
     def swimming_cost_rate(self, u_thrust):
         ''' Rate of energy expenditure (J/s) for swimming at a given thrust.'''
-        if (u_thrust <= 0.1) and not self.is_turn: # If the fish is coasting, there is no swimming-associated cost, just SMR
-            return 0 
-        else:
-            u_cost = np.sqrt(self.turn_factor(u_thrust) * self.webb_factor(u_thrust) * u_thrust**2)
-            return swimming_activity_cost(self.fish_base_mass, u_cost, self.fish_u_crit)
+        u_cost = np.sqrt(self.turn_factor * self.fish_webb_factor * u_thrust**2)
+        return swimming_activity_cost(self.fish_base_mass, u_cost, self.fish_u_crit)
 
     def calculate_dynamics(self):
         """Calculate the maneuver dynamics.
@@ -148,7 +132,7 @@ class ManeuverSegment(object):
         some of that exertion is used to overcome centripetal force and does not contribute to forward motion along the path. Thus the adjusted u_f,
         which equals u_thrust during straights but is smaller during turns, describes the amount of thrust contributing to the equations of motion, but regular
         u_thrust is used for costs."""
-        u_f = self.u_thrust if not self.is_turn else np.sqrt(self.u_thrust**2 / self.turn_factor(self.u_thrust)) # The turn-straight difference is built into turn_factor anyway, but the conditional here saves
+        u_f = self.u_thrust if not self.is_turn else np.sqrt(self.u_thrust**2 / self.turn_factor) # The turn-straight difference is built into turn_factor anyway, but the conditional here saves
         tau = self.tau(u_f)
         self.duration = t_s(self.u_i, u_f, self.length, tau)
         self.cost = self.duration * self.swimming_cost_rate(self.u_thrust) # note: not using the turn-adjusted thrust (u_f) for costs, which are based on the force the fish EXERTS not force toward forward motion
@@ -159,7 +143,7 @@ class ManeuverSegment(object):
             self.plotspeeds = np.empty(100, dtype=float64)
             self.plotaccelerations = np.zeros(self.plottimes.size, dtype=float64)
             self.plotcosts = np.full(self.plottimes.size, self.swimming_cost_rate(self.u_thrust))
-            self.plotthrusts = np.full(self.plottimes.size, np.sqrt(self.webb_factor(self.u_thrust)*self.u_thrust**2))
+            self.plotthrusts = np.full(self.plottimes.size, np.sqrt(self.fish_webb_factor*self.u_thrust**2))
             for i in range(len(self.plottimes)): # because list comprehensions aren't supported in numba
                 self.plotspeeds[i] = u_t(self.u_i, u_f, self.plottimes[i], tau)
                 self.plotpositions[i] = s_t(self.u_i, u_f, self.plottimes[i], tau) / self.length

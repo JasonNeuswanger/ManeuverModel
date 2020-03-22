@@ -5,6 +5,7 @@
 import math
 import numpy as np
 from .maneuver import maneuver_from_proportions
+from .finalstraight import CONVERGENCE_FAILURE_COST
 
 def objective_function(fish, prey_velocity, xd, yd, p):
     maneuver = maneuver_from_proportions(fish, prey_velocity, xd, yd, p)
@@ -101,5 +102,8 @@ def optimal_maneuver_CS(fish, **kwargs):
     label = kwargs.get('label', "")
     iterations = kwargs.get("iterations")
     if not kwargs.get('suppress_output', False):
-        print("Lowest energy cost after {0} CS iterations ({7:8d} evaluations) was {1:10.6f} joules (thrust penalty {8:.1f}). Mean speed {2:4.1f} cm/s, {3:5.2f} bodylengths/s. Metabolic rate {4:7.1f} mg O2/kg/hr ({5:4.1f}X SMR). {6}".format(iterations, fittest_maneuver.energy_cost, fittest_maneuver.mean_swimming_speed, fittest_maneuver.mean_swimming_speed_bodylengths, fittest_maneuver.mean_metabolic_rate, fittest_maneuver.mean_metabolic_rate_SMRs,label, fish.fEvals, fittest_maneuver.dynamics.bad_thrust_b_penalty))
+        if fittest_maneuver.energy_cost != CONVERGENCE_FAILURE_COST:
+            print("Lowest energy cost after {0} CS iterations ({7:8d} evaluations) was {1:10.6f} joules (thrust penalty {8:.1f}). Mean speed {2:4.1f} cm/s, {3:5.2f} bodylengths/s. Metabolic rate {4:7.1f} mg O2/kg/hr ({5:4.1f}X SMR). {6}".format(iterations, fittest_maneuver.energy_cost, fittest_maneuver.mean_swimming_speed, fittest_maneuver.mean_swimming_speed_bodylengths, fittest_maneuver.mean_metabolic_rate, fittest_maneuver.mean_metabolic_rate_SMRs,label, fish.fEvals, fittest_maneuver.dynamics.bad_thrust_b_penalty))
+        else:
+            print("Final straight failed to converge in all maneuvers considered. Did not find an optimal maneuver.")
     return fittest_maneuver

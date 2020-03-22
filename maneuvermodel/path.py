@@ -75,7 +75,7 @@ class ManeuverPath(object):
         r1 = maneuver.r1
         r2 = maneuver.r2
         r3 = maneuver.r3
-        eps = 2.2e-16 # actual minimum float is 2.2204460492503131e-16, found by np.finfo(float).eps, which can't be called in numba
+        eps = 2.23e-16 # actual minimum float is 2.2204460492503131e-16, found by np.finfo(float).eps, which can't be called in numba
         if Cx == -r1 or Cx == 0: Cx += eps # avoid some discontinuities
         # Calculate the first-turn tangent point (Bx, By) and angle theta1 between that and the focal point
         if Cx < 0:
@@ -84,6 +84,8 @@ class ManeuverPath(object):
         else:
             Bx = (Cx**2*r1**2 + np.sqrt(Cx**2*(Cx**2 + Cy*(Cy - 2*r1))*r1**2)*(-Cy + r1))/(Cx*(Cx**2 + (Cy - r1)**2))
             By = (Cx**2*r1 + Cy*(Cy - r1)*r1 + np.sqrt(Cx**2*(Cx**2 + Cy*(Cy - 2*r1))*r1**2))/(Cx**2 + (Cy - r1)**2)
+        if Hy == By:
+            Hy += eps # avoid another discontinuity, this time from the first straight being vertical in the xy plane
         # Set dir2 such that a fish heading back toward the focal line x=0 during the pursuit straight will always turn toward after capture, not away from it
         dir2 = -1 if Cy > By else 1
         # Calculate the arc angle for the first (pursuit) turn
