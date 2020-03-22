@@ -41,4 +41,4 @@ for i in range(N_NODES):
     with open('{0}.sh'.format('batches/' + batch_name), 'w') as batch_file:
         batch_file.write(batch_file_contents)
 
-    os.system("qsub 'batches/{0}.sh'".format(batch_name))
+    os.system("qsub 'batches/{0}.sh'".format(batch_name)) # no comment
