@@ -59,7 +59,10 @@ class ManeuverDynamics(object):
         # Create the initial maneuver segments and calculate their dynamics
         self.needs_to_slow_down = False  # Gets set to True if the fish needs to slow down to let the focal point get in front of it by the end of turn 3
         self.needs_to_speed_up = False   # Gets set to True if the fish is going too slow at the end of turn 3 to accelerate to thrust > v without violating acceleration limit
-        self.build_segments(maneuver)    # This function will set the above flags to slow down or speed up if needed
+        try:
+            self.build_segments(maneuver)    # This function will set the above flags to slow down or speed up if needed
+        except Exception:
+            print("Exception caught when building maneuver segments as initially called from ManeuverDynamics.__init__.")
         loop_count = 0
         while self.needs_to_slow_down or self.needs_to_speed_up:
             speed_change_increment = 0.03
@@ -71,7 +74,10 @@ class ManeuverDynamics(object):
                 for i in range(5):
                     speedup_amount = speed_change_increment * (1 + i)
                     maneuver.pthrusts[i] = min(maneuver.pthrusts[i] + speedup_amount, 1.0) # the max(0.1,...) part keeps it from getting stuck at 0
-            self.build_segments(maneuver)
+            try:
+                self.build_segments(maneuver)
+            except Exception:
+                print("Exception caught when looping through building of maneuver segments in ManeuverDynamics.__init__.")
             loop_count += 1
             # print("Finished change loop with pthrusts: ", maneuver.pthrusts[0], " -- ", maneuver.pthrusts[1], " -- ", maneuver.pthrusts[2], " -- ", maneuver.pthrusts[3], " -- ", maneuver.pthrusts[4], ".")
             if loop_count > 1/speed_change_increment:

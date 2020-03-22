@@ -54,8 +54,9 @@ def typical_maneuver(species, **kwargs):
 #fittest = typical_maneuver('Dolly Varden', iterations=1000)
 #visualize.summarize_solution(fittest, display = True, title = 'Typical Dolly', export_path = None, detailed=True)
 
-stretch = typical_maneuver('Dolly Varden', iterations=1000, detection_point_3D=(238.2,600,0), suppress_output=True)
-visualize.summarize_solution(stretch, display = True, title = 'Typical Dolly', export_path = None, detailed=True)
+# stretch = typical_maneuver('Dolly Varden', iterations=1000, detection_point_3D=(238.2,600,0), suppress_output=True) # does not converge
+stretch = typical_maneuver('Dolly Varden', iterations=1000, detection_point_3D=(238.1,600,0), suppress_output=True) # does converge
+# visualize.summarize_solution(stretch, display = True, title = 'Typical Dolly', export_path = None, detailed=True)
 
 
 # This is a pretty substantial difference in energy cost based on the arbitrary acceleration threshold.

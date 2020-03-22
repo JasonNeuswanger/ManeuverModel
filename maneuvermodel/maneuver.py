@@ -101,7 +101,7 @@ class Maneuver(object):
             return None
         else:
             value_3vec = np.array([value[0], value[1], 0.0])
-            result = np.dot(self.matrix_3Dfrom2D, value_3vec)
+            result = np.dot(self.matrix_3Dfrom2D, value_3vec)  # todo this line generates a silly, irrelevant numba performance warning
             result[1] *= self.ysign
             return result
             
@@ -125,12 +125,22 @@ class Maneuver(object):
             shrunk_r3 = 0.8 * self.r3
             if shrunk_r3 >= self.fish.min_turn_radius:
                 self.r3 = shrunk_r3
-                self.path = ManeuverPath(self)
+                try:
+                    self.path = ManeuverPath(self)
+                except Exception:
+                    print("Exception creating path in maneuver.py calculate_fitness() while shrinking r3 to build path.")
             else: # if we shrunk r3 as far as it can go and it's still too big, start moving circle 3 to the left
                 self.final_turn_x -= self.fish.min_turn_radius
-                self.path = ManeuverPath(self)
+                try:
+                    self.path = ManeuverPath(self)
+                except Exception:
+                    print("Exception creating path in maneuver.py calculate_fitness() while moving circle 3 to the left to build path.")
+
         # Once a valid path has been created, calculate its dynamics
-        self.dynamics = ManeuverDynamics(self)
+        try:
+            self.dynamics = ManeuverDynamics(self)
+        except Exception:
+            print("Exception creating dynamics in maneuver.py calculate_fitness().")
         # The "fitness" for the optimization algorithm is the negative cost, so maximizing fitness = minimizing cost
         self.fitness = -self.dynamics.total_cost if self.fish.use_total_cost else -self.dynamics.energy_cost
         self.fitness = self.fitness * (1 + self.dynamics.bad_thrust_b_penalty)
