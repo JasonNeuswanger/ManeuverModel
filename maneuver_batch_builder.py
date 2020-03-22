@@ -35,7 +35,7 @@ for i in range(N_NODES):
     echo "Nodes:  $(cat $PBS_NODEFILE | sort -u | tr '\n' ' ')"
     echo
 
-    python maneuver_spreadsheet_creation.py
+    python3 maneuver_spreadsheet_creation.py
     """.format(cores=CORES_PER_NODE, job_name=JOB_NAME)
 
     with open('{0}.sh'.format('batches/' + batch_name), 'w') as batch_file:
