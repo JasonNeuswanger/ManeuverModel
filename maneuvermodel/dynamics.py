@@ -73,7 +73,7 @@ class ManeuverDynamics(object):
             if self.needs_to_speed_up:
                 for i in range(5):
                     speedup_amount = speed_change_increment * (1 + i)
-                    maneuver.pthrusts[i] = min(maneuver.pthrusts[i] + speedup_amount, 1.0) # the max(0.1,...) part keeps it from getting stuck at 0
+                    maneuver.pthrusts[i] = min(maneuver.pthrusts[i] + speedup_amount, 1.0)
             try:
                 self.build_segments(maneuver)
             except Exception:
@@ -81,6 +81,7 @@ class ManeuverDynamics(object):
             loop_count += 1
             # print("Finished change loop with pthrusts: ", maneuver.pthrusts[0], " -- ", maneuver.pthrusts[1], " -- ", maneuver.pthrusts[2], " -- ", maneuver.pthrusts[3], " -- ", maneuver.pthrusts[4], ".")
             if loop_count > 1/speed_change_increment:
+                maneuver.convergence_failure_code = 1
                 self.energy_cost = CONVERGENCE_FAILURE_COST
                 self.total_cost = CONVERGENCE_FAILURE_COST
                 return
@@ -99,6 +100,7 @@ class ManeuverDynamics(object):
 
         self.straight_3 = ManeuverFinalStraight(fish, self.v, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a, maneuver.final_duration_a_proportional, False)
         if not self.straight_3.creation_succeeded:
+            maneuver.convergence_failure_code = 2
             self.energy_cost = CONVERGENCE_FAILURE_COST
             self.total_cost = CONVERGENCE_FAILURE_COST
             return

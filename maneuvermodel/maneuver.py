@@ -50,8 +50,8 @@ maneuver_spec = [
     ('mean_swimming_speed_bodylengths', optional(float64)),  
     ('swimming_cost_per_second', optional(float64)),  
     ('mean_metabolic_rate', optional(float64)),   
-    ('mean_metabolic_rate_SMRs', optional(float64)),       
-    ('origin', int8), # 1 for random, 2 for crossover (mating), 3 for mutant
+    ('mean_metabolic_rate_SMRs', optional(float64)),
+    ('convergence_failure_code', optional(int8)),
     ('dynamics',optional(dynamics_type)),
     ('path',optional(path_type)),
     ('matrix_3Dfrom2D',optional(float64[:,:])),  # these two values are both used to convert results back into
@@ -61,7 +61,7 @@ maneuver_spec = [
 @jitclass(maneuver_spec)
 class Maneuver(object):
     
-    def __init__(self, fish, prey_velocity, r1, r2, r3, final_turn_x, pthrusts, wait_time, det_x, det_y, ftap, fdap, origin):
+    def __init__(self, fish, prey_velocity, r1, r2, r3, final_turn_x, pthrusts, wait_time, det_x, det_y, ftap, fdap):
         self.fish = fish
         self.prey_velocity = prey_velocity
         self.mean_water_velocity = (prey_velocity + fish.focal_velocity) / 2.0
@@ -71,7 +71,6 @@ class Maneuver(object):
         self.final_turn_x = final_turn_x
         self.det_x = det_x
         self.det_y = det_y
-        self.origin = origin
         self.wait_time = wait_time
         self.pthrusts = pthrusts
         self.final_pthrust_a = ftap
@@ -80,6 +79,7 @@ class Maneuver(object):
         self.final_duration_a_proportional = fdap
         self.dynamics = None
         self.path = None
+        self.convergence_failure_code = None
         self.calculate_fitness()  # compute the path and dynamics
 
     def print_inputs(self):
@@ -251,7 +251,7 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     final_turn_x = value_from_proportion(p[9], min_final_turn_x, xc + 3 * fish.fork_length, no_min_weight) # ARBITRARY GUESS, MIGHT CONSTRAIN MORE BASED ON SOLUTIONS
     final_duration_a_proportional = p[10]
     # Creation solution object and return
-    return Maneuver(fish, prey_velocity, r1, r2, r3, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a, final_duration_a_proportional, 1)
+    return Maneuver(fish, prey_velocity, r1, r2, r3, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a, final_duration_a_proportional)
 
 @jit(maneuver_type(fish_type, float64, float64, float64), nopython=True)
 def random_maneuver(fish, prey_velocity, xd, yd):
@@ -279,4 +279,4 @@ def test_maneuver(fish, prey_velocity): # Returns the same test solution every t
     wait_time = 0
     final_thrust_a = 1.5 * mean_velocity
     final_duration_a_proportional = 0.5
-    return Maneuver(fish, prey_velocity, r1, r2, r3, final_turn_x, thrusts, wait_time, xd, yd, final_thrust_a, final_duration_a_proportional, 1)
+    return Maneuver(fish, prey_velocity, r1, r2, r3, final_turn_x, thrusts, wait_time, xd, yd, final_thrust_a, final_duration_a_proportional)

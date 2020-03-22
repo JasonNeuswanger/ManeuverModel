@@ -77,7 +77,12 @@ def check_cost_table_value(fork_length, focal_velocity, prey_velocity, xd, yd, d
     visualize.summarize_solution(maneuver, display=display, title='Cost Table Check', export_path=None, detailed=True)
     return maneuver
 
-man = check_cost_table_value(3, 7, 40, -0.1, 0.7, display=True, suppress_output=False) # 0.8 cm works, 0.7 cm doesn't
+# This one fails with convergence failure code 1 -- thrusts keep increasing but fish can't maneuver fast enough
+man = check_cost_table_value(3, 7, 40, -0.1, 0.7, display=True, suppress_output=False) # 0.8 cm works, 0.7 cm doesn't -- one of the close-in ones
+
+# This one fails with convergence failure code 2 -- final straight doesn't converge
+man = check_cost_table_value(3, 7, 40, 25.0227071, 93.3916044, display=True, suppress_output=False) # 0.8 cm works, 0.7 cm doesn't -- one of the close-in ones
+
 
 # fish's min_turn_radius is 0.54213
 
