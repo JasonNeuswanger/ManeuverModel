@@ -5,7 +5,7 @@ from sys import argv
 # CONFIGURATION FOR A GIVEN JOB
 
 N_NODES = int(argv[1])
-CORES_PER_NODE = 1
+CORES_PER_NODE = 1 # Note the docs say this should be a multiple of 3, although some examples use ppn=1
 JOB_NAME = argv[2]
 
 # Example usage:
@@ -22,7 +22,7 @@ for i in range(N_NODES):
     #PBS -q batch
     #PBS -l nodes=1:ppn={cores}:Intel
     #PBS -l walltime=96:00:00
-    #PBS -l mem=8gb
+    #PBS -l mem=500mb
     #PBS -M jasonneuswanger@gmail.com
     #PBS -m ae
 
@@ -40,7 +40,13 @@ for i in range(N_NODES):
     
     echo "Python version is: "
     python3 --version
+    
+    echo "Output from 'which pip' is: "
+    which pip
 
+    echo "Output from 'pip list' is: "
+    pip list
+    
     python3 maneuver_spreadsheet_creation.py
     """.format(cores=CORES_PER_NODE, job_name=JOB_NAME)
 
