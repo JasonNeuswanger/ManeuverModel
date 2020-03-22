@@ -61,7 +61,7 @@ def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, db
                 pd[i,j] = np.nan
             if IS_MAC:
                 print("Solution {0} of {1}: For fl={2:.1f} cm, fv={3:.1f} cm/s, pv={4:.1f} C, at x={7:.2f} and y={8:.2f}, energy cost is {5:.5f} J and pursuit duration is {6:.3f} s.".format(count, len(xs)*len(ys), fork_length, focal_velocity, prey_velocity, sol.energy_cost, sol.pursuit_duration, xs[i], ys[j]))
-            if count % 11 == 0:
+            if count % 5 == 0:
                 dbcursor.execute("UPDATE maneuver_model_tasks SET progress={0} WHERE taskid={1}".format(count/final_count, taskid))
             count += 1 
     # Now, run quality control check on the ec and pd values, redoing calculation if they're too far off from their neighbors
