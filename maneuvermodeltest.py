@@ -74,14 +74,36 @@ def check_cost_table_value(fork_length, focal_velocity, prey_velocity, xd, yd, d
     fish = maneuveringfish.ManeuveringFish(fork_length, focal_velocity, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
     detection_point_3D = (xd, yd, 0.0)
     maneuver = optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, n=25, iterations=1000, suppress_output=suppress_output)
-    visualize.summarize_solution(maneuver, display=display, title='Cost Table Check', export_path=None, detailed=True)
+    # visualize.summarize_solution(maneuver, display=display, title='Cost Table Check', export_path=None, detailed=True)
     return maneuver
 
 # This one fails with convergence failure code 1 -- thrusts keep increasing but fish can't maneuver fast enough
 # man = check_cost_table_value(3, 7, 40, -0.1, 0.7, display=True, suppress_output=False) # 0.8 cm works, 0.7 cm doesn't -- one of the close-in ones
 
 # This one fails with convergence failure code 2 -- final straight doesn't converge
-man = check_cost_table_value(3, 7, 40, 25.0227071, 93.3916044, display=True, suppress_output=False) # 0.8 cm works, 0.7 cm doesn't -- one of the close-in ones
+# man = check_cost_table_value(3, 7, 40, 25.0227071, 93.3916044, display=True, suppress_output=False) # 0.8 cm works, 0.7 cm doesn't -- one of the close-in ones
+
+for i in range(100):
+    print("A")
+    man = check_cost_table_value(3, 25, 28, -57.795977537598446,  0.2, display=False, suppress_output=False) # crashed the remote machine
+    print("B")
+    man = check_cost_table_value(3, 15, 34, -22.234810704082072,  0.2, display=False, suppress_output=False) # crashed the remote machine
+    print("C")
+    man = check_cost_table_value(3, 15, 40, -48.58192468791748,  0.2, display=False, suppress_output=False) # crashed the remote machine
+    print("D")
+    man = check_cost_table_value(3, 22, 28, -68.26242104316657,  0.2, display=False, suppress_output=False) # crashed the remote machine
+    print("E")
+    man = check_cost_table_value(3, 17, 45, -6.323169761790965,  1.2, display=False, suppress_output=False) # crashed the remote machine
+    print("F")
+    man = check_cost_table_value(3, 22, 37, -93.39160443573813,  1.2, display=False, suppress_output=False) # crashed the remote machine
+    print("G")
+    man = check_cost_table_value(3, 25, 34, -68.26242104316657,  0.2, display=False, suppress_output=False) # crashed the remote machine
+    print("H")
+    man = check_cost_table_value(3, 28, 28, -14.082914807729107,  0.2, display=False, suppress_output=False) # crashed the remote machine
+    print("I")
+    man = check_cost_table_value(3, 31, 31, -57.795977537598446,  0.2, display=False, suppress_output=False) # crashed the remote machine
+    print("J")
+    man = check_cost_table_value(3, 31, 34, -1.557560098468115,  0.2, display=False, suppress_output=False) # crashed the remote machine
 
 
 # fish's min_turn_radius is 0.54213
