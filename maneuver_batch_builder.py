@@ -21,7 +21,7 @@ for i in range(N_NODES):
     #PBS -N {job_name}
     #PBS -q batch
     #PBS -l nodes=1:ppn={cores}:Intel
-    #PBS -l walltime=96:00:00
+    #PBS -l walltime=336:00:00
     #PBS -l mem=500mb
     #PBS -M jasonneuswanger@gmail.com
     #PBS -m ae
