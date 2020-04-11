@@ -32,7 +32,7 @@ for i in range(N_NODES):
     echo "Job ID: $PBS_JOBID"
     echo "Queue:  $PBS_QUEUE"
     echo "Cores:  $PBS_NP"
-    echo "Nodes:  $(cat $PBS_NODEFILE | sort -u | tr '\n' ' ')"
+    echo "Nodes:  $(cat $PBS_NODEFILE | sort -u | tr '\n'' ' ')"
     echo
     
     python3 maneuver_spreadsheet_creation.py
