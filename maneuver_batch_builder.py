@@ -38,7 +38,9 @@ for i in range(N_NODES):
     python3 maneuver_spreadsheet_creation.py
     """.format(cores=CORES_PER_NODE, job_name=JOB_NAME)
 
-    with open('{0}.sh'.format('batches/' + batch_name), 'w') as batch_file:
-        batch_file.write(batch_file_contents)
+    ascii_file_contents = batch_file_contents.encode('ascii')
+
+    with open('{0}.sh'.format('batches/' + batch_name), 'wb') as batch_file:
+        batch_file.write(ascii_file_contents)
 
     os.system("qsub 'batches/{0}.sh'".format(batch_name)) # no comment
