@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import sys
+import time
 from platform import uname
 import pymysql
 import traceback
@@ -21,7 +22,26 @@ from maneuvermodel.dynamics import CONVERGENCE_FAILURE_COST
 
 IS_MAC = (os.uname()[0] == 'Darwin')
 
-def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, dbcursor):
+def db_connect():
+    return pymysql.connect(host="troutnut.com", port=3306, user="jasonn5_calibtra", passwd="aVoUgLJyKo926", db="jasonn5_calibration_tracking", autocommit=True)
+db = db_connect() # Maintain a global database connection that may be rebuilt with this function when the connection is lost
+
+def db_execute(query):
+    completed = False
+    while not completed:
+        try:
+            cursor = db.cursor()
+            cursor.execute(query)
+        except pymysql.err.OperationalError:
+            print("Database not connected. Waiting 5 minutes and retrying.")
+            time.sleep(5*60)
+            db = db_connect()
+            continue
+        else:
+            completed = True
+            return cursor
+
+def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid):
     max_thrust = 2.4 * fork_length + 40
     fish_mass = 0.0 # this input defaults the model to a rainbow trout length-mass regression
     fish_SMR = 0.0  # unused in this case
@@ -62,7 +82,7 @@ def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, db
             if IS_MAC:
                 print("Solution {0} of {1}: For fl={2:.1f} cm, fv={3:.1f} cm/s, pv={4:.1f} C, at x={7:.2f} and y={8:.2f}, energy cost is {5:.5f} J and pursuit duration is {6:.3f} s.".format(count, len(xs)*len(ys), fork_length, focal_velocity, prey_velocity, sol.energy_cost, sol.pursuit_duration, xs[i], ys[j]))
             if count % 5 == 0:
-                dbcursor.execute("UPDATE maneuver_model_tasks SET progress={0} WHERE taskid={1}".format(count/final_count, taskid))
+                db_execute("UPDATE maneuver_model_tasks SET progress={0} WHERE taskid={1}".format(count/final_count, taskid))
             count += 1 
     # Now, run quality control check on the ec and pd values, redoing calculation if they're too far off from their neighbors
     for table in (ec, pd):
@@ -81,8 +101,8 @@ def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, db
                     ratio_to_median = table[i,j] / neighbor_median
                     worst_allowable_ratio = 3.0 # assume optimal solution wasn't found if solution differs from neighbors by factor of 3
                     if ratio_to_median < 1/worst_allowable_ratio or ratio_to_median > worst_allowable_ratio:
-                        for retry in range(5): # If we didn't get reasonable values the first time, try again up to 5 times with more rigorous but time-consuming algorithm parameters
-                            dbcursor.execute("UPDATE maneuver_model_tasks SET retries=retries+1 WHERE taskid={0}".format(taskid))
+                        for retry in range(3): # If we didn't get reasonable values the first time, try again up to 5 times with more rigorous but time-consuming algorithm parameters
+                            db_execute("UPDATE maneuver_model_tasks SET retries=retries+1 WHERE taskid={0}".format(taskid))
                             sol = optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D=(xs[i], ys[j], 0.0), n=100, iterations=3000+retry*2000, p_a=0.25, suppress_output=True)
                             if sol.energy_cost < ec[i,j]:
                                 ec[i,j] = sol.energy_cost
@@ -92,7 +112,7 @@ def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, db
                                     break
                         if ratio_to_median < 1/worst_allowable_ratio or ratio_to_median > worst_allowable_ratio:
                             print("Retries to match neighbors failed for x={0}, y={1} with fl={2}, fv={3}, pv={4}. ratio_to_median={5}".format(xs[i], ys[j], fork_length, focal_velocity, prey_velocity, ratio_to_median))
-                            dbcursor.execute("UPDATE maneuver_model_tasks SET has_failed_retries=1 WHERE taskid={0}".format(taskid))
+                            db_execute("UPDATE maneuver_model_tasks SET has_failed_retries=1 WHERE taskid={0}".format(taskid))
     # Now add on the mirror image of the first 4 columns to each extrapolation, with negative y values, to facilitate smooth interpolation near y=0
     ys = np.concatenate([np.flip(-ys[:4], axis=0), ys])
     ec = np.concatenate([np.flip(ec[:,:4], axis=1), ec], axis=1)
@@ -112,27 +132,16 @@ def save_cost_tables(ec, pd, xs, ys, fl, fv, pv):
         np.savetxt(os.path.join(folder, filename), costs_labeled, fmt='%.7f,')
     save_cost_table(ec, xs, ys, 'energy_cost.csv')
     save_cost_table(pd, xs, ys, 'pursuit_duration.csv')
-        
-try:
-    db = pymysql.connect(host="troutnut.com", port=3306, user="jasonn5_calibtra", passwd="aVoUgLJyKo926", db="jasonn5_calibration_tracking", autocommit=True)
-    cursor = db.cursor()
-    select_query = "SELECT taskid, fork_length, focal_velocity, prey_velocity FROM maneuver_model_tasks WHERE start_time IS NULL"
-    cursor.execute(select_query)
-    task_data = cursor.fetchone()
-    while task_data is not None:
-        taskid, fork_length, focal_velocity, prey_velocity = task_data
-        instance_id = 'my_laptop' if IS_MAC else uname()[1]
-        print("Beginning task {0}.".format(taskid))
-        cursor.execute("UPDATE maneuver_model_tasks SET start_time=NOW(), machine='{1}', progress=0.0 WHERE taskid={0}".format(taskid, instance_id))
-        ec, pd, xs, ys = calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, cursor)
-        save_cost_tables(ec, pd, xs, ys, fork_length, focal_velocity, prey_velocity)
-        cursor.execute("UPDATE maneuver_model_tasks SET completion_time=NOW(), progress=NULL WHERE taskid={0}".format(taskid))
-        cursor.execute(select_query)
-        task_data = cursor.fetchone() # keep fetching new tasks until interrupted
-except Exception as e:
-    traceback.print_exc()
-finally:
-    db.close()
 
-
-
+select_query = "SELECT taskid, fork_length, focal_velocity, prey_velocity FROM maneuver_model_tasks WHERE start_time IS NULL"
+task_data = db_execute(select_query).fetchone()
+while task_data is not None:
+    taskid, fork_length, focal_velocity, prey_velocity = task_data
+    instance_id = 'my_laptop' if IS_MAC else uname()[1]
+    print("Beginning task {0}.".format(taskid))
+    db_execute("UPDATE maneuver_model_tasks SET start_time=NOW(), machine='{1}', progress=0.0 WHERE taskid={0}".format(taskid, instance_id))
+    ec, pd, xs, ys = calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, cursor)
+    save_cost_tables(ec, pd, xs, ys, fork_length, focal_velocity, prey_velocity)
+    db_execute("UPDATE maneuver_model_tasks SET completion_time=NOW(), progress=NULL WHERE taskid={0}".format(taskid))
+    task_data = db_execute(select_query).fetchone()
+db.close()

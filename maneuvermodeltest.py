@@ -63,6 +63,42 @@ import timeit, time
 from maneuvermodel import maneuver, segment, maneuveringfish, optimize_cuckoo, visualize, dynamics
 
 
+
+def check_johansen_et_al(display=False, suppress_output=False):
+    # Checks maneuver cost predictions against empirical measurements from Johansen et al
+    # It looks like they had costs per maneuver of 1.28 mg O2 / kg for freestream swimming and 0.78 for refuge swimming,
+    # both at a temperature of 15 C and velocity of 68 cm/s, with rainbow trout of size 33 cm and 423 g. With the width x
+    # depth of the tube being 25 x 26 cm, we might assume the average detected prey's lateral distance was around 15 cm or
+    # so, and I'll assume prey were detected fairly early (say 30 cm upstream) on average.
+    fork_length = 33
+    focal_velocity = 68
+    prey_velocity = 68
+    xd = -30
+    yd = 15
+    max_thrust = 2.4 * fork_length + 40
+    fish_mass = 423 # this input defaults the model to a rainbow trout length-mass regression
+    fish_SMR = 0.0  # default to sockeye SMR for given temperature
+    fish_NREI = 0.0 # unused in this case
+    temperature = 15 # only for SMR
+    use_total_cost = False
+    disable_wait_time = False
+    fish = maneuveringfish.ManeuveringFish(fork_length, focal_velocity, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
+    detection_point_3D = (xd, yd, 0.0)
+    maneuver = optimize_cuckoo.optimal_maneuver_CS(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, n=25, iterations=1000, suppress_output=suppress_output)
+    visualize.summarize_solution(maneuver, display=display, title='Cost Table Check', export_path=None, detailed=True)
+    joulesPerMgO2 = 3.36*4.184
+    costMgO2 = maneuver.energy_cost / joulesPerMgO2
+    costMgO2PerKG = costMgO2 / (fish_mass/1000)
+    print("Maneuver cost of locomotion alone is ", costMgO2PerKG, "mg O2 / kg")
+    print("Focal swimming cost including SMR in is ", 3600 * (fish.focal_swimming_cost_including_SMR / joulesPerMgO2), " mg O2 / kg / hr") # convert from focal_swimming_cost_including_SMR in J/s
+    print("SMR alone is ", 3600 * (fish.SMR_J_per_s / joulesPerMgO2) / (fish_mass/1000), " mg O2 / kg / hr") # convert from focal_swimming_cost_including_SMR in J/s
+    print("Locomotion cost for focal swimming for duration of maneuver is ", (maneuver.duration * fish.focal_swimming_cost_of_locomotion / joulesPerMgO2) / (fish_mass/1000), " mg O2 / kg")
+    return maneuver, fish
+test_maneuver, test_fish = check_johansen_et_al(display=True)
+
+
+
+
 def check_cost_table_value(fork_length, focal_velocity, prey_velocity, xd, yd, display=False, suppress_output=False):
     max_thrust = 2.4 * fork_length + 40
     fish_mass = 0.0 # this input defaults the model to a rainbow trout length-mass regression

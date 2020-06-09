@@ -159,6 +159,9 @@ class Maneuver(object):
             self.mean_swimming_speed = self.path.total_length / self.dynamics.moving_duration
             self.mean_swimming_speed_bodylengths = self.mean_swimming_speed / self.fish.total_length
             self.swimming_cost_per_second = self.dynamics.energy_cost / self.dynamics.moving_duration
+
+
+
             self.mean_metabolic_rate = self.swimming_cost_per_second / ((1/3600.0) * (self.fish.base_mass/1000.0) * oq) # convert from J/s back to mg O2/kg/hr to get mean metabolic rate while moving on the maneuver
             self.mean_metabolic_rate_SMRs = 1 + self.mean_metabolic_rate / self.fish.SMR if self.fish.SMR > 0 else np.nan # in case zero is passed as SMR for calculations limited to locomotion costs
 
@@ -221,8 +224,8 @@ def value_from_proportion(p, min_value, max_value, min_weight):
 
 @jit(maneuver_type(fish_type, float64, float64, float64, float64[:]), nopython=True)
 def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
-    """ Create a valid solution from just a numpy vector p of [0, 1) of values in proportion to their allowed range. This should make it easier to 
-        test out different optimization algorithms. There are a total of 18 parameters per maneuver."""
+    """ Create a valid solution from just a numpy vector p of [0, 1) of values in proportion to their allowed range. Allowing the solutions being
+    explored when optimizing a maneuver to be expressed as proportions allows for easier testing of different optimization algorithms. """
     no_min_weight = 0.0
     mean_velocity = (prey_velocity + fish.focal_velocity) / 2
     # Set wait time within bounds, if setting it at all
@@ -238,8 +241,7 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     # Set all the proportional thrusts
     pthrusts = p[:6]
     # Set turn radii
-    # todo check maxes for real maneuvers and see what comes out
-    max_turn_radius = 15 * fish.min_turn_radius # ARBITRARY GUESS, CONSTRAIN BASED ON SOLUTIONS
+    max_turn_radius = 15 * fish.min_turn_radius # todo check maxes for real maneuvers and see what comes out
     max_r1 = min(0.5 * (xc ** 2 / yc + yc) - 0.0001, max_turn_radius)  # subtract 0.0001 cm (0.001 mm) so pursuit turn cannot encompass the capture point and cause divide-by-zero errors
     min_r1 = min(fish.min_turn_radius, max_r1)  # allow r1 to shrink beyond the min turn radius if necessary to not collide with the capture point
     r1 = value_from_proportion(p[5], min_r1, max_r1, no_min_weight) # use max_r1 as r1 for head-snap maneuvers
@@ -248,7 +250,7 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     # Set characteristics of the final straight to catch up to the focal point / velocity
     final_pthrust_a = p[8] # must be higher than the water velocity to catch up to the focal point (by at least 2 % to improve convergence)
     min_final_turn_x = xc - 2 * (r2 + r3 + 2 * fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
-    final_turn_x = value_from_proportion(p[9], min_final_turn_x, xc + 3 * fish.fork_length, no_min_weight) # ARBITRARY GUESS, MIGHT CONSTRAIN MORE BASED ON SOLUTIONS
+    final_turn_x = value_from_proportion(p[9], min_final_turn_x, xc + 3 * fish.fork_length, no_min_weight) # todo also consider constraining based on real solutions
     final_duration_a_proportional = p[10]
     # Creation solution object and return
     return Maneuver(fish, prey_velocity, r1, r2, r3, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a, final_duration_a_proportional)
