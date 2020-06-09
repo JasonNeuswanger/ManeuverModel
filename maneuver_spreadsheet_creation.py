@@ -27,6 +27,7 @@ def db_connect():
 db = db_connect() # Maintain a global database connection that may be rebuilt with this function when the connection is lost
 
 def db_execute(query):
+    global db
     completed = False
     while not completed:
         try:
