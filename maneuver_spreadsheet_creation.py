@@ -140,7 +140,7 @@ while task_data is not None:
     instance_id = 'my_laptop' if IS_MAC else uname()[1]
     print("Beginning task {0}.".format(taskid))
     db_execute("UPDATE maneuver_model_tasks SET start_time=NOW(), machine='{1}', progress=0.0 WHERE taskid={0}".format(taskid, instance_id))
-    ec, pd, xs, ys = calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid, cursor)
+    ec, pd, xs, ys = calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid)
     save_cost_tables(ec, pd, xs, ys, fork_length, focal_velocity, prey_velocity)
     db_execute("UPDATE maneuver_model_tasks SET completion_time=NOW(), progress=NULL WHERE taskid={0}".format(taskid))
     task_data = db_execute(select_query).fetchone()
