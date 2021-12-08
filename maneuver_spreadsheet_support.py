@@ -70,9 +70,7 @@ fork_lengths = list(np.concatenate([np.arange(3,5,0.2),np.arange(5,10,0.5),np.ar
 time_per_number = 4.0   # seconds required to compute one cell in the spreadsheet
 bytes_per_number = 9.8   # bytes required to store one cell in the spreadsheet
 max_instances = 50
-numbers_per_sheet = 609  # number of cells in each sheet, based on the resolution #todo add actual value here
-#todo replace temperature and cs with focal and prey velocities
-
+numbers_per_sheet = 609  # number of cells in each sheet, based on the resolution
 
 # Basing max focal velocity on a linear interpolation boundary from 30 cm/s at 3 cm fork length up to 120 cm/s at 80 cm body length
 # max_fv = 90/77 * fl + 2040 / 77

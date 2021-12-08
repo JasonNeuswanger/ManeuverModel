@@ -1,5 +1,6 @@
 import numpy as np
-from numba import int64, float64, jitclass, boolean
+from numba import int64, float64, boolean
+from numba.experimental import jitclass
 
 def print_path(path): # A non-compiled function to print the characteristics of a path for diagnostic purposes.
     print("Inputs for my Mathematica code to plot this maneuver")

@@ -63,7 +63,7 @@ def calculate_cost_tables(fork_length, focal_velocity, prey_velocity, taskid):
         return abs(abs(x)**(1.0/sp))
     xs = np.concatenate([-abs(np.flip(scale(np.linspace(scale_inv(1), scale_inv(-xmin), 20))[1:], axis=0)), [-0.1], scale(np.linspace(scale_inv(1), scale_inv(xmax), 10)[1:])])
     ys = np.concatenate([[ymin, 0.7, 1.2], scale(np.linspace(scale_inv(1), scale_inv(xmax), 20)[2:])])
-    # This grid has 609 values per sheet, similar to the previous Amazon grid.
+    # This grid has 725 values per sheet.
     # for x in xs: print("x = {0:.5f}".format(x)) # print statements that can be used to check grid spacing
     # for y in ys: print("y = {0:.5f}".format(y))
     ec = np.zeros(shape=(len(xs),len(ys)))
@@ -124,7 +124,7 @@ def save_cost_tables(ec, pd, xs, ys, fl, fv, pv):
     if IS_MAC:
         base_folder = os.path.join(os.path.sep, 'Users', 'Jason', 'Desktop', 'Maneuver Sheet Test')
     else:
-        base_folder = os.path.join(os.path.sep, 'home', 'alaskajn', 'new_maneuver_tables')
+        base_folder = os.path.join(os.path.sep, 'home', 'alaskajn', 'manever_model_tables')
     folder = os.path.join(base_folder, "fl_{0}".format(fl), "fv_{0}".format(fv), "pv_{0}".format(pv))
     if not os.path.exists(folder):
         os.makedirs(folder)    

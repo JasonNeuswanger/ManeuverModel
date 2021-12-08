@@ -1,1 +1,1 @@
-__all__ = ["segment","finalstraight", "maneuver", "maneuveringfish", "brettglassparams", "optimize", "path", "visualize", "dynamics", "optimize_greywolf", "optimize_mothflame", "optimize_whale", "optimize_particleswarm", "optimize_cuckoo", "optimize_multi_species_cuckoo","optimize_bat", "optimize_salp"]
+__all__ = ["segment","finalstraight", "maneuver", "maneuveringfish", "path", "visualize", "dynamics", "optimize_sama", "optimize_cuckoo", "optimize_dynamic_cuckoo"]

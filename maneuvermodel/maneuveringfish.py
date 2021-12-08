@@ -1,5 +1,7 @@
 import numpy as np
-from numba import float64, uint64, boolean, jitclass, jit
+from numba import float64, uint64, boolean, jit
+from numba.experimental import jitclass
+from .constants import *
 
 @jit(float64(float64, float64, float64), nopython=True)
 def swimming_activity_cost(mass, speed, u_crit):
@@ -20,13 +22,13 @@ def swimming_activity_cost(mass, speed, u_crit):
     # and slightly higher than 13.556 J/mgO2 recommnded by Elliott and Davidson 1975 for non-ureotelic carnivores like trout
     # It also matches Brett's (1976) recommendation for steadily swimming sockeye salmon of (3.36 cal/mgO2) and 4.184 J/cal
     # Because this function is called so often, its components were commented out and combined into the simplest form below.
-    #alpha_0 = 0.00193045 # =exp(-6.25)
-    #delta = 0.72
-    #twlambda = 1.60
-    #oq = 3.36*4.184 # Oxycaloric equivalent in J/mgO2
-    #hoursPerSecond = 1/3600
-    #activity_portion_of_metabolic_rate = alpha_0 * mass**delta * speed**twlambda # mgO2/hour, directly from Trudel & Welch 2005
-    #return hoursPerSecond * oq * activity_portion_of_metabolic_rate
+    # alpha_0 = 0.00193045 # =exp(-6.25)
+    # delta = 0.72
+    # twlambda = 1.60
+    # oq = 3.36*4.184 # Oxycaloric equivalent in J/mgO2
+    # hoursPerSecond = 1/3600
+    # activity_portion_of_metabolic_rate = alpha_0 * mass**delta * speed**twlambda # mgO2/hour, directly from Trudel & Welch 2005
+    # return hoursPerSecond * oq * activity_portion_of_metabolic_rate
     #
     # A customization of this follows the logic (but not the exact form) of Rand & Hinch 1998 to penalize anaerobic swimming
     # above and beyond what would happen from extrapolating the aerobic equation described above. The fish uses purely aerobic
@@ -67,8 +69,7 @@ maneuvering_fish_spec = [
     ('focal_swimming_cost_including_SMR', float64),
     ('coasting_cost_including_SMR', float64),
     ('use_total_cost', boolean),
-    ('disable_wait_time', boolean),
-    ('fEvals', uint64)
+    ('disable_wait_time', boolean)
 ]
 
 @jitclass(maneuvering_fish_spec)
@@ -82,7 +83,8 @@ class ManeuveringFish(object):
         self.rho = 1.0                                     # density of water = 1 g/cm^3
         self.waterlambda = 0.2                             # factor by which effective mass increases due to entrained water
         self.webb_factor = 2.83                            # 'Webb Factor' used to modify thrust for unsteady swimming, taken from Webb 1991 Table 4, not the rounded suggestion of 3 on p. 589
-        #self.webb_factor = 1.0 + (2.83 - 1.0) * 2.0 # FOR SENSITIVITY ANALYSIS ONLY -- halving gives 1.915, doubling gives 4.66
+        if SENSITIVITY_WEBB_FACTOR_MULTIPLIER != 1.0:
+            self.webb_factor = 1 + SENSITIVITY_WEBB_FACTOR_MULTIPLIER * (self.webb_factor - 1)
         self.NREI = NREI # expected long-term NREI (Joules/second), for optional optimization incorporating energetic opportunity cost of time spent maneuvering
         # For maximum thrust, specify 'None' to use the default of 250 cm/s, which was roughly estimated as the size-independent physiological maximum for rainbow trout from
         # 9.6 to 38.7 cm based on Table 4 in Webb 1976. This is a good estimate at the real maximum. But optimum thrusts in practice are always far smaller, so much of the algorithm
@@ -109,7 +111,6 @@ class ManeuveringFish(object):
         self.coasting_cost_including_SMR = self.SMR_J_per_s
         self.u_crit = 36.23 * self.fork_length**0.19         # Grayling relationship from Jones et al 1974, via Hughes & Dill 1990
         # Numerical algorithm settings and variables
-        self.fEvals = 0                                      # Counter to keep track of cost function evaluations for comparing different optimization algorithm settings
         self.use_total_cost = use_total_cost                 # Fitness goal -- True to use swimming + opportunity cost, False to just use swimming cost
         self.disable_wait_time = disable_wait_time           # Prevent fish from ever waiting before beginning maneuver, useful for testing against observed maneuvers defined by start of motion
 

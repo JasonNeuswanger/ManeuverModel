@@ -1,9 +1,10 @@
 import numpy as np
-from numba import jit, float64, int8, jitclass, optional
+from numba import jit, float64, int8, uint64, optional
+from numba.experimental import jitclass
 from .maneuveringfish import ManeuveringFish
 from .path import ManeuverPath
 from .dynamics import ManeuverDynamics
-from .finalstraight import CONVERGENCE_FAILURE_COST
+from .constants import *
 
 # Create numba types for the imported jitclasses, so I can use jitclasses as attributes of other jitclasses.
 dynamics_type = ManeuverDynamics.class_type.instance_type
@@ -54,8 +55,9 @@ maneuver_spec = [
     ('convergence_failure_code', optional(int8)),
     ('dynamics',optional(dynamics_type)),
     ('path',optional(path_type)),
-    ('matrix_3Dfrom2D',optional(float64[:,:])),  # these two values are both used to convert results back into
-    ('ysign',optional(float64))                  # 3-D from the positive side of the 2-D x-y plane in which calculations are done
+    ('matrix_3Dfrom2D',optional(float64[:,::1])),  # these two values are both used to convert results back into
+    ('ysign',optional(float64)),                   # 3-D from the positive side of the 2-D x-y plane in which calculations are done
+    ('objective_function_evaluations', optional(uint64))
 ]
 
 @jitclass(maneuver_spec)
@@ -75,7 +77,7 @@ class Maneuver(object):
         self.pthrusts = pthrusts
         self.final_pthrust_a = ftap
         self.thrusts = np.zeros(pthrusts.size, dtype=float64)     # just a placeholder of the right type
-        self.final_thrust_a = ftap                                # just a placeholder of the right type
+        self.final_thrust_a = ftap
         self.final_duration_a_proportional = fdap
         self.dynamics = None
         self.path = None
@@ -96,12 +98,12 @@ class Maneuver(object):
         print("wait_time: ", self.wait_time)
 
     def to_3D(self, value):
-        '''Converts a model result expressed as a 2-vector in the positive-y side of the x-y plane back into 3-D coordinates on the original side of the fish'''
+        ''' Converts a model result expressed as a 2-vector in the positive-y side of the x-y plane back into 3-D coordinates on the original side of the fish '''
         if (self.matrix_3Dfrom2D is None or self.ysign is None):
             return None
         else:
             value_3vec = np.array([value[0], value[1], 0.0])
-            result = np.dot(self.matrix_3Dfrom2D, value_3vec)  # todo this line generates a silly, irrelevant numba performance warning
+            result = np.dot(self.matrix_3Dfrom2D, value_3vec)
             result[1] *= self.ysign
             return result
             
@@ -115,7 +117,6 @@ class Maneuver(object):
             return result        
                     
     def calculate_fitness(self):
-        self.fish.fEvals += 1
         try:
             self.path = ManeuverPath(self)
         except Exception:
@@ -146,8 +147,8 @@ class Maneuver(object):
             print("Exception creating dynamics in maneuver.py calculate_fitness().")
         # The "fitness" for the optimization algorithm is the negative cost, so maximizing fitness = minimizing cost
         self.fitness = -self.dynamics.total_cost if self.fish.use_total_cost else -self.dynamics.energy_cost
-        self.fitness = self.fitness * (1 + self.dynamics.bad_thrust_b_penalty)
-        
+        self.fitness = self.fitness * (1 + self.dynamics.bad_thrust_b_penalty) * (1 + self.dynamics.violates_acceleration_limit_penalty)
+
     def calculate_summary_metrics(self):
         """ Calculates attributes of the solution that only need to be requested if it was the optimal solution to a given maneuver, not for each intermediate solution. Separated from
             calculate_fitness for computational efficiency, since these are usually only needed for the final optimal solution."""
@@ -159,9 +160,6 @@ class Maneuver(object):
             self.mean_swimming_speed = self.path.total_length / self.dynamics.moving_duration
             self.mean_swimming_speed_bodylengths = self.mean_swimming_speed / self.fish.total_length
             self.swimming_cost_per_second = self.dynamics.energy_cost / self.dynamics.moving_duration
-
-
-
             self.mean_metabolic_rate = self.swimming_cost_per_second / ((1/3600.0) * (self.fish.base_mass/1000.0) * oq) # convert from J/s back to mg O2/kg/hr to get mean metabolic rate while moving on the maneuver
             self.mean_metabolic_rate_SMRs = 1 + self.mean_metabolic_rate / self.fish.SMR if self.fish.SMR > 0 else np.nan # in case zero is passed as SMR for calculations limited to locomotion costs
 
@@ -189,7 +187,7 @@ class Maneuver(object):
         for i in range(5): 
             p[i] = self.pthrusts[i]
         # Set turn radii
-        max_turn_radius = 15 * self.fish.min_turn_radius # ARBITRARY GUESS, CONSTRAIN BASED ON SOLUTIONS
+        max_turn_radius = MAX_TURN_RADIUS_MULTIPLE * self.fish.min_turn_radius # arbitrary maximum to constrain the solution space
         max_r1 = min(0.5*(xc**2/yc + yc) - 0.01, max_turn_radius) # subtract 0.01 cm (0.1 mm) so pursuit turn cannot encompass the capture point and cause divide-by-zero errors
         min_r1 = min(self.fish.min_turn_radius, max_r1)           # allow r1 to shrink beyond the min turn radius if necessary to not collide with the capture point
         p[5] = proportion_of_range(self.r1, min_r1, max_r1)
@@ -198,7 +196,7 @@ class Maneuver(object):
         # Set characteristics of the final straight to catch up to the focal point / velocity
         min_final_turn_x = xc - 2 * (self.r2 + self.r3 + 2 * self.fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
         p[8] = self.final_pthrust_a
-        p[9] = proportion_of_range(self.final_turn_x, min_final_turn_x, xc + 3 * self.fish.fork_length)
+        p[9] = proportion_of_range(self.final_turn_x, min_final_turn_x, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length)
         p[10] = self.final_duration_a_proportional
         return p
     
@@ -241,7 +239,7 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     # Set all the proportional thrusts
     pthrusts = p[:6]
     # Set turn radii
-    max_turn_radius = 15 * fish.min_turn_radius # todo check maxes for real maneuvers and see what comes out
+    max_turn_radius = MAX_TURN_RADIUS_MULTIPLE * fish.min_turn_radius
     max_r1 = min(0.5 * (xc ** 2 / yc + yc) - 0.0001, max_turn_radius)  # subtract 0.0001 cm (0.001 mm) so pursuit turn cannot encompass the capture point and cause divide-by-zero errors
     min_r1 = min(fish.min_turn_radius, max_r1)  # allow r1 to shrink beyond the min turn radius if necessary to not collide with the capture point
     r1 = value_from_proportion(p[5], min_r1, max_r1, no_min_weight) # use max_r1 as r1 for head-snap maneuvers
@@ -250,7 +248,7 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     # Set characteristics of the final straight to catch up to the focal point / velocity
     final_pthrust_a = p[8] # must be higher than the water velocity to catch up to the focal point (by at least 2 % to improve convergence)
     min_final_turn_x = xc - 2 * (r2 + r3 + 2 * fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
-    final_turn_x = value_from_proportion(p[9], min_final_turn_x, xc + 3 * fish.fork_length, no_min_weight) # todo also consider constraining based on real solutions
+    final_turn_x = value_from_proportion(p[9], min_final_turn_x, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length, no_min_weight)
     final_duration_a_proportional = p[10]
     # Creation solution object and return
     return Maneuver(fish, prey_velocity, r1, r2, r3, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a, final_duration_a_proportional)

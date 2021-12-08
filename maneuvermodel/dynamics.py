@@ -1,9 +1,9 @@
 import numpy as np
-from numba import float64, jitclass, boolean
-from .segment import ManeuverSegment, Cd, ALPHA
+from numba import float64, boolean
+from numba.experimental import jitclass
+from .segment import ManeuverSegment, Cd
 from .finalstraight import ManeuverFinalStraight
-
-CONVERGENCE_FAILURE_COST = 99999999999
+from .constants import *
 
 segment_type = ManeuverSegment.class_type.instance_type
 final_straight_type = ManeuverFinalStraight.class_type.instance_type
@@ -19,7 +19,6 @@ maneuver_dynamics_spec = [
     ('energy_cost', float64),
     ('opportunity_cost', float64),
     ('total_cost', float64),
-    ('jerk_penalty', float64),
     ('turn_1', segment_type),
     ('turn_2', segment_type),
     ('turn_3', segment_type),
@@ -30,12 +29,16 @@ maneuver_dynamics_spec = [
     ('fish_rho', float64),
     ('fish_webb_factor', float64),
     ('fish_area', float64),
+    ('fish_volume', float64),
+    ('fish_waterlambda', float64),
     ('fish_total_length', float64),
     ('fish_min_thrust', float64),
     ('fish_max_thrust', float64),
     ('needs_to_slow_down', boolean),
     ('needs_to_speed_up', boolean),
     ('bad_thrust_b_penalty', float64),
+    ('violates_acceleration_limit_penalty', float64),
+    ('mean_of_pthrusts_except_last', float64),
     ('v', float64) # shortcut to maneuver.mean_water_velocity
 ]
 
@@ -53,12 +56,16 @@ class ManeuverDynamics(object):
         self.fish_webb_factor = fish.webb_factor
         self.fish_area = fish.area
         self.fish_total_length = fish.total_length
+        self.fish_waterlambda = fish.waterlambda
+        self.fish_volume = fish.volume
         self.fish_min_thrust = fish.min_thrust
         self.fish_max_thrust = fish.max_thrust
         self.v = maneuver.mean_water_velocity
         # Create the initial maneuver segments and calculate their dynamics
         self.needs_to_slow_down = False  # Gets set to True if the fish needs to slow down to let the focal point get in front of it by the end of turn 3
-        self.needs_to_speed_up = False   # Gets set to True if the fish is going too slow at the end of turn 3 to accelerate to thrust > v without violating acceleration limit
+        self.needs_to_speed_up = False   # Gets set to True if the fish is going too slow at the end of turn 3 to accelerate to thrust > v without violating thrust limit
+        self.mean_of_pthrusts_except_last = np.mean(maneuver.pthrusts[:-1])
+        self.violates_acceleration_limit_penalty = 0.0
         try:
             self.build_segments(maneuver)    # This function will set the above flags to slow down or speed up if needed
         except Exception:
@@ -74,6 +81,7 @@ class ManeuverDynamics(object):
                 for i in range(5):
                     speedup_amount = speed_change_increment * (1 + i)
                     maneuver.pthrusts[i] = min(maneuver.pthrusts[i] + speedup_amount, 1.0)
+            self.mean_of_pthrusts_except_last = np.mean(maneuver.pthrusts[:-1])
             try:
                 self.build_segments(maneuver)
             except Exception:
@@ -81,7 +89,12 @@ class ManeuverDynamics(object):
             loop_count += 1
             # print("Finished change loop with pthrusts: ", maneuver.pthrusts[0], " -- ", maneuver.pthrusts[1], " -- ", maneuver.pthrusts[2], " -- ", maneuver.pthrusts[3], " -- ", maneuver.pthrusts[4], ".")
             if loop_count > 1/speed_change_increment:
-                maneuver.convergence_failure_code = 1
+                if self.needs_to_speed_up:
+                    maneuver.convergence_failure_code = 1
+                elif self.needs_to_slow_down:
+                    maneuver.convergence_failure_code = 2
+                else:
+                    maneuver.convergence_failure_code = 3
                 self.energy_cost = CONVERGENCE_FAILURE_COST
                 self.total_cost = CONVERGENCE_FAILURE_COST
                 return
@@ -99,7 +112,7 @@ class ManeuverDynamics(object):
             x_p, t_p = self.penultimate_point(maneuver)
             self.straight_3 = ManeuverFinalStraight(fish, self.v, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a, maneuver.final_duration_a_proportional, False)
             if not self.straight_3.creation_succeeded:
-                maneuver.convergence_failure_code = 2
+                maneuver.convergence_failure_code = 4
                 self.energy_cost = CONVERGENCE_FAILURE_COST
                 self.total_cost = CONVERGENCE_FAILURE_COST
                 return
@@ -109,10 +122,10 @@ class ManeuverDynamics(object):
         # Compute a penalty on the solution if acceleration at the start of segment B of the final straight is over the limit, because the way it's calculated
         # makes it computationally infeasible to restrict this a priori. This way we let the optimization algorithm do the heavy lifting for this one constraint
         try:
-            threshold = 100  # maximum allowed absolute value of acceleration... and remember this is cm/s^2!!
+            threshold = MAX_ACCELERATION
             tau_times_thrust = self.fish_mass / (self.fish_rho * self.fish_webb_factor * ALPHA * self.fish_area * Cd(self.fish_total_length, (self.straight_3.final_speed_a + self.v) / 2))
             min_thrust_b = max(0.0, np.sqrt(-2 * threshold * tau_times_thrust + self.straight_3.final_speed_a ** 2) if threshold < self.straight_3.final_speed_a ** 2 / (2. * tau_times_thrust) else 0.0)
-            min_penalty = 0.5 # at least 50 % cost penalty for having bad thrust b
+            min_penalty = 2.0 # at least 200 % cost penalty for having bad thrust b, so it's never chosen if a solution with an allowable thrust can be found
             if self.straight_3.thrust_b < min_thrust_b:
                 self.bad_thrust_b_penalty = min_penalty + (min_thrust_b - self.straight_3.thrust_b) # beyond the min, use a penalty proportional to the difference to help gide the algorithm
             else:
@@ -145,38 +158,76 @@ class ManeuverDynamics(object):
         self.opportunity_cost = fish.NREI * (self.wait_duration + self.pursuit_duration)                                 # cost of not searching during the wait/pursuit
         self.total_cost = self.energy_cost + self.opportunity_cost
 
-        # TODO list (most recent, I guess?)
-        # Do more convergence tests of the algorithm to avoid wasting iterations on bad maneuvers
-        # Change fitness function to ignore "fitness" and just return energy cost, flip signs accordingly in cuckoo
-        # Test cuckoo parameters for consistency, convergence with a high enough number of iterations
-
-        # Todo for maximum acceleration, look at smoothed real maneuver tracks and plot max acceleration
-
     def min_next_thrust(self, previous_speed, is_not_final_a):
-        threshold = 100  # maximum allowed absolute value of acceleration... and remember this is cm/s^2!!
+        threshold = MAX_ACCELERATION
         tau_times_thrust = self.fish_mass / (self.fish_rho * self.fish_webb_factor * ALPHA * self.fish_area * Cd(self.fish_total_length, previous_speed))
-        min_next_thrust = np.sqrt(-2*threshold*tau_times_thrust + previous_speed**2) if threshold < previous_speed**2/(2.*tau_times_thrust) else 0.0
+        min_next_thrust = np.sqrt(-2*threshold*tau_times_thrust + previous_speed**2) if threshold < previous_speed**2/(2*tau_times_thrust) else 0.0
         regular_min = self.fish_min_thrust if is_not_final_a else 1.02 * self.v
         min_next_thrust = max(regular_min, min_next_thrust) # enforce constraints from the fish's thrust limits
         return min_next_thrust
 
-    def max_next_thrust(self, previous_speed):
-        threshold = 100  # maximum allowed absolute value of acceleration... and remember this is cm/s^2!!
+    def max_next_thrust(self, previous_speed, is_not_final_a):
+        """ Normally, the maximum next thrust is constrained by the acceleration limit. However, in very rare cases mostly
+            involving extremely short maneuvers in implausibly fast water, this can prevent the algorithm from converging altogether.
+            Even with all pthrusts up through segment A of the final straight being 1.0, the fish is still too far behind to
+            catch up to its focal point without violating the acceleration limit at the start of segment A in the final straight
+            in order to reach or exceed the water velocity and make progress upstream. My solution to this is to check whether
+            the fish at the start of segment A has already maxed its pthrusts (through the 'speeding up' iteration above), and
+            still needs to speed up for that segment; if it does, its thrust is capped at the fish's maximum rather than
+            constrained by acceleration limits. However, next_thrust_from_proportion() calculates acceleration directly and applies a
+            fitness penalty in the optimizaton algorithm to any solutions exceeding the acceleration limit, so that solutions
+            which use this mechanism to facilitate convergence are not favored over those which respect the acceleration limit
+            in all stages, if any of those are available. This entire mechanism affects only a tiny fraction of edge cases and
+            not realistic maneuvers, but those funny convergence failures were causing NaN values in the interpolation tables,
+            which unaccepably prevent use of fast interpolation methods. This method lets us plausibly fill in those blanks."""
         tau_times_thrust = self.fish_mass / (self.fish_rho * self.fish_webb_factor * ALPHA * self.fish_area * Cd(self.fish_total_length, previous_speed))
-        max_next_thrust = np.sqrt(2*threshold*tau_times_thrust + previous_speed**2)
+        if self.mean_of_pthrusts_except_last == 1.0 and previous_speed < self.v and not is_not_final_a:
+            max_next_thrust = self.fish_max_thrust
+        else:
+            max_next_thrust = np.sqrt(2 * MAX_ACCELERATION * tau_times_thrust + previous_speed**2)
         max_next_thrust = min(self.fish_max_thrust, max_next_thrust)
         return max_next_thrust
 
-    def next_thrust_from_proportion(self, previous_speed, proportional_next_thrust, is_not_final_a):
-        # The drag factor Cd is calculated based on the incoming speed to limit acceleration at the start of the segment when it's greatest
+    def next_thrust_from_proportion(self, previous_speed, proportional_next_thrust, is_not_final_a, is_turn, turn_radius):
+        """ Pass turn_radius = np.nan and is_turn = False for straights. Otherwise pass true and the actual radius.
+            This function returns the thrust exerted by the fish.
+        """
+        # Calculate the minimum and maximum for the next thrust based on the acceleration limit, not accounting for the turn factor.
         min_next_thrust = self.min_next_thrust(previous_speed, is_not_final_a)
-        max_next_thrust = self.max_next_thrust(previous_speed)
+        max_next_thrust = self.max_next_thrust(previous_speed, is_not_final_a)
+        # Now adjust these for turns. Because the output of this function is the exerted thrust and not the actual thrust affecting
+        # the physics in the case of turns, I basically invert the turn adjustment to thrust (from calculate_dynamics() in segment.py)
+        # by solving taking the equation for u_f as a function of u_thrust and solving it for u_thrust with u_f being the bounds above,
+        # which lets me adjust the limits here upward so that they fall within the allowable range of acceleration and deceleration after
+        # turn adjustment. Before I made this correction, I was getting peak decelerations that exceeded the limit because the fish was
+        # using a lower effective thrust (after the turn correction) than the limit allows. One trick to this adjustment is that
+        # the turn_factor as used in calculate_dynamics() depends on drag factor Cd, which depends on the average of the initial speed
+        # and thrust, but we're still trying to calculate the thrust and don't know it yet at this point. Therefore, I use a different
+        # value of Cd here, based only on the initial speed, to calculate the turn factor. That's why I preface the variables with preliminary_.
+        # Because Cd is slightly different between here and calculate_dynamics(), this adjustment might not perfectly enforce the acceleration
+        # bounds every time, but in practice it's so extremely close it doesn't matter.
+        if is_turn:
+            preliminary_Cd = Cd(self.fish_total_length, previous_speed) # using u_i for drag factor here instead of average of u_i and u_thrust, because u_thrust isn't known yet
+            preliminary_turn_factor = np.sqrt(1 + (2 * self.fish_volume * (1 + self.fish_waterlambda) / (turn_radius * self.fish_area * preliminary_Cd * ALPHA * self.fish_webb_factor)) ** 2)
+            if SENSITIVITY_TURN_FACTOR_MULTIPLIER != 1.0:
+                preliminary_turn_factor = 1 + SENSITIVITY_TURN_FACTOR_MULTIPLIER * (preliminary_turn_factor - 1)
+            min_next_thrust = np.sqrt(preliminary_turn_factor * min_next_thrust**2)
+            max_next_thrust = np.sqrt(preliminary_turn_factor * max_next_thrust**2)
         self.needs_to_speed_up = max_next_thrust < min_next_thrust
         if self.needs_to_speed_up:
             # print("Setting needs_to_speed_up=True because max_next_thrust=",max_next_thrust," is < min_next_thrust=",min_next_thrust," for previous speed",previous_speed)
             next_thrust = min_next_thrust # just to prevent errors in the meantime before the maneuver is sped up
         else:
             next_thrust = min_next_thrust + (max_next_thrust - min_next_thrust) * proportional_next_thrust
+        # We allow for violating the acceleration limit, but assign a solution fitness penalty proportional to the violation, so
+        # it is only used if there is no other choice to allow the solution to converge.
+        tau_times_thrust = self.fish_mass / (self.fish_rho * self.fish_webb_factor * ALPHA * self.fish_area * Cd(self.fish_total_length, previous_speed))
+        next_max_acceleration = abs(((next_thrust - previous_speed) * (next_thrust + previous_speed)) / (2 * tau_times_thrust))
+        if next_max_acceleration > MAX_ACCELERATION:
+            # Note that subtracting 1 from the ratio below would allow for penalties of effectively 0 when next_max_acceleration is very slightly above
+            # max_acceleration. I really want to avoid solutions that violate MAX_ACCELERATION unless they are the ONLY ones that converge, so I am only
+            # subtracting 0.5 instead of 1.0, meaning solutions which don't violate the limit will have at minimum a 50 % fitness advantage over those that do.
+            self.violates_acceleration_limit_penalty = (next_max_acceleration / MAX_ACCELERATION) - 0.5
         return next_thrust
 
     def build_segments(self, maneuver):
@@ -187,27 +238,27 @@ class ManeuverDynamics(object):
         path = maneuver.path
         verbose = False
 
-        maneuver.thrusts[0] = self.next_thrust_from_proportion(self.v, maneuver.pthrusts[0], True)
+        maneuver.thrusts[0] = self.next_thrust_from_proportion(self.v, maneuver.pthrusts[0], True, True, path.turn_1_radius)
         self.turn_1 = ManeuverSegment(fish, path.turn_1_length, self.v, maneuver.thrusts[0], True, path.turn_1_radius, False)
         if verbose: print("final speed from turn 1 is",self.turn_1.final_speed,"after thrust",maneuver.thrusts[0])
 
-        maneuver.thrusts[1] = self.next_thrust_from_proportion(self.turn_1.final_speed, maneuver.pthrusts[1], True)
+        maneuver.thrusts[1] = self.next_thrust_from_proportion(self.turn_1.final_speed, maneuver.pthrusts[1], True, False, np.nan)
         self.straight_1 = ManeuverSegment(fish, path.straight_1_length, self.turn_1.final_speed, maneuver.thrusts[1], False, 0.0, False)
         if verbose: print("final speed from straight 1 is", self.straight_1.final_speed, "after thrust", maneuver.thrusts[1])
 
-        maneuver.thrusts[2] = self.next_thrust_from_proportion(self.straight_1.final_speed, maneuver.pthrusts[2], True)
+        maneuver.thrusts[2] = self.next_thrust_from_proportion(self.straight_1.final_speed, maneuver.pthrusts[2], True, True, path.turn_2_radius)
         self.turn_2 = ManeuverSegment(fish, path.turn_2_length, self.straight_1.final_speed, maneuver.thrusts[2], True, path.turn_2_radius, False)
         if verbose: print("final speed from turn 2 is", self.turn_2.final_speed, "after thrust", maneuver.thrusts[2])
 
-        maneuver.thrusts[3] = self.next_thrust_from_proportion(self.turn_2.final_speed, maneuver.pthrusts[3], True)
+        maneuver.thrusts[3] = self.next_thrust_from_proportion(self.turn_2.final_speed, maneuver.pthrusts[3], True, False, np.nan)
         self.straight_2 = ManeuverSegment(fish, path.straight_2_length, self.turn_2.final_speed, maneuver.thrusts[3], False, 0.0, False)
         if verbose: print("final speed from straight 2 is", self.straight_2.final_speed, "after thrust", maneuver.thrusts[3])
 
-        maneuver.thrusts[4] = self.next_thrust_from_proportion(self.straight_2.final_speed, maneuver.pthrusts[4], True)
+        maneuver.thrusts[4] = self.next_thrust_from_proportion(self.straight_2.final_speed, maneuver.pthrusts[4], True, True, path.turn_3_radius)
         self.turn_3 = ManeuverSegment(fish, path.turn_3_length, self.straight_2.final_speed, maneuver.thrusts[4], True, path.turn_3_radius, False)
         if verbose: print("final speed from turn 3 is", self.turn_3.final_speed, "after thrust", maneuver.thrusts[4])
 
-        maneuver.final_thrust_a = self.next_thrust_from_proportion(self.turn_3.final_speed, maneuver.final_pthrust_a, False)
+        maneuver.final_thrust_a = self.next_thrust_from_proportion(self.turn_3.final_speed, maneuver.final_pthrust_a, False, False, np.nan)
         if verbose: print("final thrust a will be ",maneuver.final_thrust_a)
 
         self.check_if_needs_to_slow_down(maneuver)
