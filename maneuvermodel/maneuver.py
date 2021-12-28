@@ -206,7 +206,7 @@ class Maneuver(object):
         p[6] = proportion_of_range(self.r2, self.fish.min_turn_radius, max_turn_radius)
         p[7] = proportion_of_range(self.r3, self.fish.min_turn_radius, max_turn_radius)
         # Set characteristics of the final straight to catch up to the focal point / velocity
-        min_final_turn_x = xc - 2 * (self.r2 + self.r3 + 2 * self.fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
+        min_final_turn_x = xc - 2 * (self.r2 + self.r3)# + 2 * self.fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
         p[8] = self.final_pthrust_a
         p[9] = proportion_of_range(self.final_turn_x, min_final_turn_x, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length)
         p[10] = self.final_duration_a_proportional
@@ -240,7 +240,7 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     r3 = value_from_proportion(p[7], fish.min_turn_radius, max_turn_radius)
     # Set characteristics of the final straight to catch up to the focal point / velocity
     final_pthrust_a = p[8] # must be higher than the water velocity to catch up to the focal point (by at least 2 % to improve convergence)
-    min_final_turn_x = xc - 2 * (r2 + r3 + 2 * fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
+    min_final_turn_x = xc - 2 * (r2 + r3)# + 2 * fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
     final_turn_x = value_from_proportion(p[9], min_final_turn_x, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length)
     final_duration_a_proportional = p[10]
     # Creation solution object and return

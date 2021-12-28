@@ -144,7 +144,6 @@ class ManeuverDynamics(object):
            the focal point (higher x coordinate) and with enough time and space to slown down (if needed) to the focal velocity without overshooting the focal point.
            If that condition isn't met, we gradually slow down the rest of the maneuver by reducing thrusts until it is met."""
         x_p, t_p = self.penultimate_point(maneuver)
-        # u_a = maneuver.final_thrust_a
         u_a = thrust_a_adjusted_for_tailbeats(maneuver.final_thrust_a, t_p, x_p, self.turn_3.final_speed, self.v, self.fish_total_length)
         tau_times_thrust = self.fish_mass / (self.fish_rho * self.fish_webb_factor * ALPHA * self.fish_area * Cd(self.fish_total_length, u_a))
         if self.turn_3.final_speed > self.v:
