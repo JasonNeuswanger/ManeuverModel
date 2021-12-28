@@ -4,27 +4,40 @@ import matplotlib.pyplot as plt
 from .maneuver import maneuver_from_proportions
 from .saro_compiled import CompiledSARO
 from .constants import CONVERGENCE_FAILURE_COST
+from .visualize import param_labels
 
-def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Unnamed", export_path=None, display=True, iterations=40, n=15, global_iterations=2000, global_n=300, n_tests=5, se=0.5, mu=50):
+def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Unnamed", export_path=None, display=True, iterations=500, n=100, global_iterations=1000, global_n=325, n_tests=10, se=0.5, mu=100):
     """ This is a wrapper for optimal_maneuver which runs it multiple times, once slowly with over-the-top resources
         to hopefully determine the global optimum for reference, and then n_tests times with more common run settings
         to see how well the algorithm converges under those conditions."""
     prey_velocity_passed = fish.focal_velocity if prey_velocity is None else prey_velocity
-    global_optimal_maneuver = optimal_maneuver(fish, detection_point_3D, prey_velocity=prey_velocity_passed, iterations=global_iterations, n=global_n)
+    print("Calculating global optimum...")
+    global_opt, global_opt_model = optimal_maneuver(fish, detection_point_3D, prey_velocity=prey_velocity_passed, iterations=global_iterations, n=global_n, tracked=True, return_optimization_model=True)
+    print("Calculating replicates...")
     plt.ioff()
-    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-    ax.axhline(y=global_optimal_maneuver.energy_cost, ls='dotted', color='0.7', label='Global Optimum')
+    fig, ((ax, ax2),(ax3,ax4)) = plt.subplots(2, 2, figsize=(16, 11))
+    # ----------------------------------------- Plot histories histories for each fast solution ---------------------------------#
+    ax.axhline(y=global_opt.energy_cost, ls='dotted', color='0.7', label='Global Optimum')
+    ax3.axhline(y=global_opt.pursuit_duration, ls='dotted', color='0.7', label='Global Optimum')
+    ax4.axhline(y=global_opt.capture_x, ls='dotted', color='0.7', label='Global Optimum')
     for _ in range(n_tests):
-        maneuver, optimization_model = optimal_maneuver(fish, detection_point_3D, prey_velocity=prey_velocity_passed, iterations=iterations, n=n, se=se, mu=mu, compiled=False, return_optimization_model=True)
-        best_value_at_each_timestep = -np.array(optimization_model.history.list_global_best_fit)
-        function_evals = np.arange(0, optimization_model.nfe_per_epoch * (optimization_model.epoch + 1), optimization_model.nfe_per_epoch)
-        ax.plot(function_evals, best_value_at_each_timestep, label="{0:7.6f} x Glob Opt".format(maneuver.energy_cost / global_optimal_maneuver.energy_cost))
+        opt, opt_model = optimal_maneuver(fish, detection_point_3D, prey_velocity=prey_velocity_passed, iterations=iterations, n=n, se=se, mu=mu, tracked=True, return_optimization_model=True)
+        ax.plot(opt_model.tracked_nfe, opt_model.tracked_energy_cost, label="{0:7.6f} x Glob Opt".format(opt.energy_cost / global_opt.energy_cost))
+        ax3.plot(opt_model.tracked_nfe, opt_model.tracked_pursuit_duration, label="{0:7.6f}".format(opt.pursuit_duration))
+        ax4.plot(opt_model.tracked_nfe, opt_model.tracked_capture_x, label="{0:7.6f}".format(opt.capture_x))
         ax.set_yscale('log')
-    ax.set_xlabel("Objective function evaluations")
     ax.set_ylabel("Maneuver activity cost (J)")
-    if label != "Unnamed": ax.set_title(label)
-    ax.set_ylim([0.99 * global_optimal_maneuver.energy_cost, 1.5 * global_optimal_maneuver.energy_cost])
-    ax.legend()
+    ax3.set_ylabel("Pursuit duration (s)")
+    ax4.set_ylabel("Capture x (cm)")
+    ax.set_ylim([0.99 * global_opt.energy_cost, 1.5 * global_opt.energy_cost])
+    # -------------------------- Plot parameter values over the evolution of the global optimum solution -------------------------#
+    param_values = global_opt_model.tracked_position.transpose()
+    for i, pv in enumerate(param_values): ax2.plot(global_opt_model.tracked_nfe, pv, label=param_labels[i])
+    ax2.set_ylabel("Proportional parameters")
+    for axis in (ax, ax2, ax3, ax4):
+        axis.set_xlabel("Objective function evaluations")
+        axis.legend()
+    if label != "Unnamed": fig.suptitle(label)
     fig.tight_layout()
     if export_path is not None:
         fig.savefig(export_path)
@@ -32,7 +45,7 @@ def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Un
         fig.show()
     else:
         plt.close(fig)
-    return global_optimal_maneuver
+    return global_opt
 
 def optimal_maneuver(fish, detection_point_3D, **kwargs):
     start_time = time.perf_counter()
@@ -59,7 +72,8 @@ def optimal_maneuver(fish, detection_point_3D, **kwargs):
                                       pop_size=kwargs.get('n', 325),
                                       se=kwargs.get('se', 0.6),
                                       mu=kwargs.get('mu', 500),
-                                      dims=dims)
+                                      dims=dims,
+                                      tracked=kwargs.get('tracked', False))
     solution = optimization_model.solve()
     fittest_maneuver = maneuver_from_proportions(fish, prey_velocity, xd, yd, solution.position)
     fittest_maneuver.objective_function_evaluations = optimization_model.nfe
@@ -76,10 +90,10 @@ def optimal_maneuver(fish, detection_point_3D, **kwargs):
     if not kwargs.get('suppress_output', False):
         if fittest_maneuver.energy_cost != CONVERGENCE_FAILURE_COST:
             print("Lowest energy cost after {0} iterations ({7:8d} evaluations, {8:5.1f} s) was {1:10.6f} joules. Mean speed {2:4.1f} cm/s, {3:5.2f} bodylengths/s. Metabolic rate {4:7.1f} mg O2/kg/hr ({5:4.1f}X SMR). {6}".format(optimization_model.epoch, fittest_maneuver.energy_cost, fittest_maneuver.mean_swimming_speed, fittest_maneuver.mean_swimming_speed_bodylengths, fittest_maneuver.mean_metabolic_rate, fittest_maneuver.mean_metabolic_rate_SMRs,label, fittest_maneuver.objective_function_evaluations, time_cost_s))
-            if fittest_maneuver.dynamics.bad_thrust_b_penalty > 0:
-                print("The best maneuver included a penalty for a bad thrust in stage b of the final straight, penalty factor {0:.3f}.".format(fittest_maneuver.dynamics.bad_thrust_b_penalty))
-            if fittest_maneuver.dynamics.violates_acceleration_limit_penalty > 0:
-                print("The best maneuver included a penalty for violating the acceleration limit, penalty factor {0:.3f}.".format(fittest_maneuver.dynamics.violates_acceleration_limit_penalty))
+            # if fittest_maneuver.dynamics.bad_thrust_b_penalty > 0:
+            #     print("The best maneuver included a penalty for a bad thrust in stage b of the final straight, penalty factor {0:.3f}.".format(fittest_maneuver.dynamics.bad_thrust_b_penalty))
+            # if fittest_maneuver.dynamics.violates_acceleration_limit_penalty > 0:
+            #     print("The best maneuver included a penalty for violating the acceleration limit, penalty factor {0:.3f}.".format(fittest_maneuver.dynamics.violates_acceleration_limit_penalty))
         else:
             print("Maneuver failed to converge in all possible paths/dynamics considered. Did not find an optimal maneuver.")
             if hasattr(fittest_maneuver, 'convergence_failure_code'):

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from maneuvermodel import maneuver, segment, maneuveringfish, optimize, optimize_cuckoo, visualize, dynamics
+from maneuvermodel import optimize, visualize, maneuveringfish
 
 # import cProfile
 # import pstats
@@ -39,13 +39,188 @@ typical_fish['Arctic Grayling'] = create_typical_fish('Arctic Grayling')
 def typical_maneuver(species, **kwargs):
     fish = kwargs.get('modified_fish', typical_fish[species])
     default_detection_point_3D = (-typical[species]['detection_distance'] / 1.414, typical[species]['detection_distance'] / 1.414, 0.0)
-    detection_point_3D = kwargs.get('detection_point_3D', default_detection_point_3D)
+    detection_point_3D = kwargs.get('modified_detection_point_3D', default_detection_point_3D)
     prey_velocity = typical[species]['prey_velocity']
-    return optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity,**kwargs)
+    return optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, **kwargs)
 
-test_fish = create_typical_fish('Dolly Varden', use_total_cost=True)
-test = typical_maneuver('Dolly Varden', modified_fish=test_fish)
+test_fish = create_typical_fish('Dolly Varden', use_total_cost=False)
 
+species = 'Dolly Varden'
+detection_point_3D = (-typical[species]['detection_distance'] / 1.414, typical[species]['detection_distance'] / 1.414, 0.0)
+prey_velocity = typical[species]['prey_velocity']
+# opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D, prey_velocity=prey_velocity)
+opt, opt_model = optimize.optimal_maneuver(typical_fish[species], detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, tracked=True, return_optimization_model=True)
+
+
+# Testing the number of function evaluations requiring slowdowns over time and therefore basically lost in the algorithm
+import seaborn as sns
+sns.lineplot(x=opt_model.tracked_nfe, y=opt_model.tracked_nfe_slowed_down)
+# It seems to be about one third of the effort
+
+
+# todo useful plot... show each parameter's value and what would happen to maneuver fitness if it were perturbed by +/- 5 %
+#
+# import matplotlib.pyplot as plt
+# import seaborn as sns
+# from maneuvermodel.visualize import param_labels
+# from maneuvermodel.maneuver import maneuver_from_proportions
+#
+# def plot_parameter_sensitivity(opt, display=True, export_path=None):
+#     opt_proportions = opt.proportions()
+#     plt.ioff()
+#     fig, axes = plt.subplots(3, 4, figsize=(18, 11))
+#     def replace_element(proportions, index, new_value):
+#         new_proportions = proportions.copy()
+#         new_proportions[index] = new_value
+#         return new_proportions
+#     for i, ax in enumerate(axes.reshape(-1)):
+#         p = opt_proportions[i]
+#         x = np.unique(np.clip(np.linspace(p - 0.05, p + 0.05, 301), 0, 1)) # go +/- 5 % from optimal param proportional value, but stopping at 0 or 1; always choose odd #
+#         y = [-maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).fitness for x_value in x]
+#         slowdowns = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).dynamics.was_slowed_down]
+#         sns.lineplot(x=x, y=y, ax=ax)
+#         sns.rugplot(slowdowns, ax=ax)
+#         ax.set_ylabel("Maneuver cost (J)")
+#         ax.set_xlabel("Proportional " + param_labels[i])
+#         ax.axvline(x=p, ls='dotted', color='0.0', label='Global Optimum')
+#     fig.suptitle("Proportional parameters (dotted line = optimum, orange ticks = had to slow down)")
+#     fig.tight_layout()
+#     if export_path is not None:
+#         fig.savefig(export_path)
+#     if display:
+#         fig.show()
+#     else:
+#         plt.close(fig)
+#
+# plot_parameter_sensitivity(opt)
+
+# todo main questions now...
+# 1. is it ever NOT ideal to minimize duration_a?
+# 2. probably LOTs of my function evals are being wasted by reshuffling after slowdowns
+# 3.
+
+
+
+
+
+
+
+
+
+import matplotlib.pyplot as plt
+param_values = opt_model.tracked_position.transpose()
+plot_x = np.arange(len(param_values[0]))
+for i, pv in enumerate(param_values): plt.plot(plot_x, pv, label=i)
+plt.legend()
+
+# todo in the morning
+# Fix my main run_convergence_test function for the new saro_compiled, and build in some version of the above crude 5 lines to track parameter values as they converge
+# consider removing final_duration_a as a parameter because thrust overwhelmingly dictates duration, and making it a strategy variable within that narrow range is silly
+# Maybe plot what happens when we tweak it from min to max of its range (did that below, min of range is best)
+# It's a very tiny difference so it takes a while for the solution to settle in, but it tends to get there eventually
+
+# test.dynamics.straight_3.thrust_b
+
+# todo There's a case to be made that it
+
+# parameter 8 is the second least stable
+# variables 5, 6, 10, 11 all heading for zero
+
+
+#visualize.summarize_solution(test, display = True, title = 'Typical Dolly', export_path = None, detailed=True)
+#print("Final straight true thrust_a is {0} but adjusted thrust_a is {1} from initial speed {2}".format(test.dynamics.straight_3.true_thrust_a, test.dynamics.straight_3.thrust_a, test.dynamics.straight_3.initial_speed))
+#print("Number of nonconvergent maneuvers considered: ", opt_model.nfe_nonconvergent,"out of",opt_model.nfe,"total.")
+
+from collections import Counter
+print("Convergence failure codes and frequencies:", Counter(opt_model.tracked_convergence_failure_codes.split('_')[1:]).most_common())
+
+# import matplotlib.pyplot as plt
+# plt.plot(opt_model.tracked_nfe_nonconvergent) # nonconvergent solutions are similarly common throughout, but start out slightly more common than toward the end
+
+from maneuvermodel.maneuver import maneuver_from_proportions
+
+proportions = test.proportions()
+x = np.linspace(0, 1, 50)
+y = []
+for prop in x:
+    proportions[10] = prop
+    m = maneuver_from_proportions(test_fish, test.prey_velocity, test.det_x, test.det_y, proportions)
+    y.append(m.dynamics.energy_cost)
+plt.plot(x,y)
+# the difference it makes is like 1 in 100000
+
+
+def round_if_close(number):
+    rounded = np.round(number)
+    return rounded if np.abs(rounded - number) < 0.005 else number
+rounded_proportions = np.array([round_if_close(number) for number in test.proportions()], dtype=np.float64)
+rounded_maneuver = maneuver_from_proportions(test_fish, test.prey_velocity, test.det_x, test.det_y, rounded_proportions)
+print("Original fitness was", test.fitness,"and orig fitness was", rounded_maneuver.fitness)
+
+
+
+
+from maneuvermodel.maneuver import maneuver_from_proportions
+def round_if_close(number):
+    rounded = np.round(number)
+    return rounded if np.abs(rounded - number) < 0.005 else number
+rounded_proportions = np.array([round_if_close(number) for number in test.proportions()], dtype=np.float64)
+rounded_maneuver = maneuver_from_proportions(test_fish, test.prey_velocity, test.det_x, test.det_y, rounded_proportions)
+print("Original fitness was", test.fitness,"and rounded fitness was", rounded_maneuver.fitness)
+
+# 5, 6, 8, 11
+
+# todo simply rounding speeds things up just enough that slowdown kicks in and fitness goes to shit
+# and yet I have no slowdown problems through most of the maneuvers otherwise
+
+
+#todo remember why I'm testing this originally in the first place, to see about the fitness of rounded solutions
+# todo it would be a good test to see how many maneuvers that got slowed down ended up being considered useful
+
+# todo i should test how many solutions stagnate and would be replaced by randoms if algo allowed
+
+from maneuvermodel.maneuver import random_maneuver, maneuver_from_proportions
+test_maneuver = random_maneuver(test_fish, 30, -5, 5)
+proportions = test_maneuver.proportions()
+test_maneuver_from_proportions = maneuver_from_proportions(test_fish, 30, -5, 5, proportions)
+print(test_maneuver_from_proportions.proportions() - proportions)
+# once in a while the fifth value is more than negligibly off, and the last value (wait time) always is
+
+
+
+# todo two things
+# 1. I should try to avoid having ANY nonconvergent solutions, which will probably improve optimization performance
+# 2. I was somehow getting nonconvergent answers when there are at least some convergent solutions, which is a problem
+
+# todo check whether tailbeat frequency is one full swing of the tail or the swing and then back to starting point as in Maranda's shark paper
+
+
+# currently getting thrust adjusted higher than thrust exerted on a glitchy one, but that's ok because
+# final speed 3 was higher
+# I think the problem here might be the needs_to_slow_down threshold doesn't account for adjusted thrust, so when
+# the adjusted thrust was higher than exerted (due to incoming speed being even higher still), the maneuver overshot the focal point.
+
+# Allowed range min for max t_a was 0.0 and initial guess was -0.00019170441546988745 .
+# Earlier calculated min_t_a of 0.0 with root function value -0.09650298935774693
+# Max t_a was not found within tolerance. Value was max t_a= 1.4322778903179547e-05  with root function value= -5.138091278203416e-05 .
+# Root function inputs for t_a: {v= 28.5 , tauTimesUf= 1.6537344750550433 , tp= 1.4906131850943625 , xp= -42.47645925754354 , ut3= 30.294459864622038 , ua= 30.2878739477909 }
+# Exception caught when calculating segment A of ManeuverFinalStraight in finalstraight.py
+
+# Allowed range min for max t_a was 0.0 and initial guess was -0.0006516435521151875 .
+# Earlier calculated min_t_a of 0.0 with root function value -0.42856612757191836
+# Max t_a was not found within tolerance. Value was max t_a= 0.00023019944910658075  with root function value= -0.004678293686704693 .
+# Root function inputs for t_a: {v= 28.5 , tauTimesUf= 1.7356360013030472 , tp= 1.9434416608080212 , xp= -55.241777968216056 , ut3= 38.76639165510828 , ua= 38.56853455938624 }
+# Exception caught when calculating segment A of ManeuverFinalStraight in finalstraight.py
+
+
+# Getting frequent convergence failures now having to do with the tons of errors....
+
+# Final straight true thrust_a is 30.224731292074914 but adjusted thrust_a is 30.284751880012077 from initial speed 30.285110384768352
+# Final straight true thrust_a is 30.287970940261204 but adjusted thrust_a is 30.303158002264404 from initial speed 30.303249658994158
+# Basically adjusted thrust_a is super-close to the initial speed because duration_a is near zero, which makes perfect sense.
+# In other words we're basically just skipping / continuing status quo through segment A and going straight from turn 3 to segment B.
+
+# Dynamics of segment final straight    of length  29.48: duration_a=0.359, duration_b=0.214, thrusts=( 64.88,  27.41), cost:   0.0337795.
 
 # fittest = typical_maneuver('Dolly Varden')
 # visualize.summarize_solution(fittest, display = True, title = 'Typical Dolly', export_path = None, detailed=True)

@@ -6,11 +6,15 @@ import matplotlib.colors as colors
 import seaborn as sns
 from matplotlib.collections import LineCollection
 from .constants import *
+from .maneuver import maneuver_from_proportions
 
 smallestfontsize = 8
 smallfontsize = 10
 bigfontsize = 12
 
+param_labels = ['Thrust (turn 1)', 'Thrust (straight 1)', 'Thrust (turn 2)', 'Thrust (straight 2)',
+                'Thrust (turn 3)', 'Radius (turn 1)', 'Radius (turn 2)', 'Radius (turn 3)',
+                'Thrust (straight 3A)', 'X (turn 3)', 'Duration (straight 3A)', 'Wait time']
 
 def summarize_solution(solution, display=True, title=None, export_path=None, should_print_dynamics=True, detailed=False, plot_dpi=132):
     if solution.dynamics.energy_cost >= CONVERGENCE_FAILURE_COST:
@@ -53,7 +57,6 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
 
 def preyarrow(ax, pt1, pt2, color, head_width, overhang=0.4):
     ax.arrow(pt1[0], pt1[1], pt2[0] - pt1[0], pt2[1] - pt1[1], color=color, length_includes_head=True, head_width=head_width, overhang=overhang)
-
 
 # def plot_water_coords_path(ax, path, detailed, padding=5):
 #    ax.set_aspect('equal')
@@ -350,6 +353,33 @@ def plot_swimming_costs(ax, dynamicstuple, solution, detailed):
     if detailed:
         ax.set_title('Cost ({0:.5f} J + {1:.5f} J from SMR)'.format(solution.dynamics.energy_cost, SMR * solution.dynamics.duration), fontsize=smallfontsize)
 
+def plot_parameter_sensitivity(opt, display=True, export_path=None):
+    opt_proportions = opt.proportions()
+    plt.ioff()
+    fig, axes = plt.subplots(3, 4, figsize=(18, 11))
+    def replace_element(proportions, index, new_value):
+        new_proportions = proportions.copy()
+        new_proportions[index] = new_value
+        return new_proportions
+    for i, ax in enumerate(axes.reshape(-1)):
+        p = opt_proportions[i]
+        x = np.unique(np.clip(np.linspace(p - 0.05, p + 0.05, 301), 0, 1)) # go +/- 5 % from optimal param proportional value, but stopping at 0 or 1; always choose odd #
+        y = [-maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).fitness for x_value in x]
+        slowdowns = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).dynamics.was_slowed_down]
+        sns.lineplot(x=x, y=y, ax=ax)
+        sns.rugplot(slowdowns, ax=ax)
+        ax.set_ylabel("Maneuver cost (J)")
+        ax.set_xlabel("Proportional " + param_labels[i])
+        ax.set_ylim(ymin=-0.9*opt.fitness, ymax=-2.0*opt.fitness)
+        ax.axvline(x=p, ls='dotted', color='0.0', label='Global Optimum')
+    fig.suptitle("Proportional parameters (dotted line = optimum, orange ticks = had to slow down)")
+    fig.tight_layout()
+    if export_path is not None:
+        fig.savefig(export_path)
+    if display:
+        fig.show()
+    else:
+        plt.close(fig)
 
 def print_dynamics(dynamicstuple, dynamics, solution):
     (turn_1, straight_1, turn_2, straight_2, turn_3, straight_3) = dynamicstuple
@@ -369,3 +399,4 @@ def print_dynamics(dynamicstuple, dynamics, solution):
     total_cost_with_SMR = solution.fish.maneuver_energy_cost_including_SMR(solution) + dynamics.opportunity_cost
     print("Energy cost = {0:7.4f} J ({1:7.4f} J without SMR, {2:7.4f} J w/opportunity cost of {3:7.4f} J).".format(energy_cost_with_SMR, dynamics.energy_cost, total_cost_with_SMR, dynamics.opportunity_cost))
     print("Total duration = {0:8.6f} s (wait time {1:5.3f} s, pursuit {2:.3f} s). Traveled distance {3:6.1f} cm at mean speed {4:4.1f} cm/s".format(dynamics.duration, dynamics.wait_duration, dynamics.pursuit_duration, solution.path.total_length, dynamics.mean_speed))
+
