@@ -1,6 +1,6 @@
 import numpy as np
 from .segment import s_t, u_t, s_u, Cd
-from numba import float64, boolean, optional
+from numba import njit, float64, boolean, optional, types
 from numba.experimental import jitclass
 from .maneuveringfish import swimming_activity_cost
 from .constants import *
@@ -16,6 +16,7 @@ maneuver_final_straight_spec = [
     ('fish_min_thrust', float64),
     ('fish_base_mass',float64),
     ('fish_u_crit', float64),
+    ('fish_total_length', float64),
     ('fish_focal_velocity', float64),
     ('mean_water_velocity', float64), # main velocity to use for the maneuver, mean of fish & focal
     ('tau_times_thrust',float64),
@@ -28,6 +29,7 @@ maneuver_final_straight_spec = [
     ('t_a_range_min',float64),
     ('min_t_a',float64),
     ('max_t_a',float64),
+    ('true_thrust_a', float64),
     ('thrust_a',float64),
     ('thrust_b',float64),
     ('adj_thrust_a', float64),
@@ -41,17 +43,49 @@ maneuver_final_straight_spec = [
     ('cost',float64),
     ('duration',float64),
     ('length', float64),
-    ('convergence_failure_code', optional(float64))
+    ('convergence_failure_code', types.string)
 ]
+
+@njit
+def thrust_a_adjusted_for_tailbeats(thrust_a, tp, xp, ui, v, fish_total_length):
+    # Making this a separate function so I can call it in advance in needs_to_slow_down
+    uf = thrust_a
+
+    # Duration estimate based on first-order taylor expansion of 'st' equation about zero
+    # Q = (uf + ui) / (uf - ui)
+    # duration_estimate = ((1 + Q)*(tp*v + xp))/(-uf + Q*uf - v - Q*v) # rough guess at duration of segment a in advance, expanded about 0
+
+    # Duration estimate based on thrust as constant speed
+    duration_estimate = (tp * v + xp) / (uf - v)
+
+    # Duration estimate based on first-order taylor expansion of 'st' equation about the estimate above
+    # tau = self.tau_times_thrust / uf
+    # Q = (uf + ui) / (uf - ui)
+    # Z = np.exp((tp*v + xp)/(self.tau_times_thrust - tau*v))
+    # duration_estimate = -(((tp*v + xp)*(v + Q*(-2*uf + v)*Z) + self.tau_times_thrust*(uf - v)*(1 + Q*Z)*np.log((1 + Q*Z)**2/(np.exp((tp*v + xp)/(self.tau_times_thrust - tau*v))*(1 + Q)**2)))/(-uf**2 + v**2 + Q*(uf - v)**2*Z))
+
+    initial_tailbeat_frequency = 1.3333333 * (1 + ui / fish_total_length)
+    initial_tailbeat_duration = 1 / initial_tailbeat_frequency
+    if duration_estimate <= initial_tailbeat_duration:
+        estimated_thrust_at_end = ui + (uf - ui) * (duration_estimate / initial_tailbeat_duration)
+        mean_thrust = (ui + estimated_thrust_at_end) / 2
+    else:
+        full_thrust_duration = duration_estimate - initial_tailbeat_duration
+        mean_thrust_during_first_tailbeat = (ui + uf) / 2
+        mean_thrust = uf * (full_thrust_duration / duration_estimate) + mean_thrust_during_first_tailbeat * (initial_tailbeat_duration / duration_estimate)
+    # if mean_thrust < 0:
+    #     print("Got mean thrust < 0 from duration estimate ", duration_estimate)
+    return max(mean_thrust, 1.02 * v)  # don't let the adjustment drop it below 1.02*v
 
 @jitclass(maneuver_final_straight_spec)
 class ManeuverFinalStraight(object):
     
     def __init__(self, fish, mean_water_velocity, initial_t, initial_x, initial_speed, thrust_a, duration_a_proportional, can_plot):
         self.creation_succeeded = False
+        self.convergence_failure_code = ''
         if not np.isfinite(initial_t):
             self.initial_t = initial_t  # setting to allow for diagnostics via solution.dynamics.straight_3.initial_t
-            self.convergence_failed(5.0)  # extremely rare edge case
+            self.convergence_failed('5', 0)  # extremely rare edge case
             return
         self.initial_speed = initial_speed
         self.initial_t = initial_t
@@ -60,6 +94,7 @@ class ManeuverFinalStraight(object):
         self.fish_base_mass = fish.base_mass  # the normal, measurable mass of the fish, for use calculating swimming cost
         self.fish_u_crit = fish.u_crit
         self.fish_min_thrust = fish.min_thrust
+        self.fish_total_length = fish.total_length
         self.fish_webb_factor = fish.webb_factor
         self.fish_focal_velocity = fish.focal_velocity
         self.fish_base_mass = fish.base_mass # the apparent mass of the fish for use in equations of motion, i.e. the base mass times 1 + lambda
@@ -69,9 +104,10 @@ class ManeuverFinalStraight(object):
         # The times when this will be most important are when the fish is using a long segment A to catch up to its focal point. In that case,
         # we would expect thrust_a to be the best approximation of the speed the fish is moving most of the time and the most relevant to the drag factor.
         try:
-            Cd_a_and_b = Cd(fish.total_length, thrust_a)
+            self.true_thrust_a = thrust_a  # todo better nomenclature here eventually
+            self.thrust_a = self.thrust_a_adjusted_for_tailbeats(thrust_a)
+            Cd_a_and_b = Cd(fish.total_length, self.thrust_a)
             self.tau_times_thrust = fish.mass / (fish.rho * fish.webb_factor * ALPHA * fish.area * Cd_a_and_b) # constant for these segments since not turning
-            self.thrust_a = thrust_a
             tau_a = self.tau_times_thrust / self.thrust_a
             # Compute the bounds on t_a, the t_a_range_min restricting search to where the functions (for both min and max) can converge
             v = self.mean_water_velocity
@@ -82,30 +118,35 @@ class ManeuverFinalStraight(object):
             self.max_t_a = self.compute_max_t_a()
             self.duration_a = self.min_t_a + (self.max_t_a - self.min_t_a) * duration_a_proportional
             # Compute the rest of segment a, then b
-            self.length_a = s_t(self.initial_speed, thrust_a, self.duration_a, tau_a)
-            self.final_speed_a = u_t(self.initial_speed, thrust_a, self.duration_a, tau_a)
+            self.length_a = s_t(self.initial_speed, self.thrust_a, self.duration_a, tau_a)
+            self.final_speed_a = u_t(self.initial_speed, self.thrust_a, self.duration_a, tau_a)
         except Exception:
             print("Exception caught when calculating segment A of ManeuverFinalStraight in finalstraight.py")
-            self.convergence_failed(8)
+            self.convergence_failed('8', 0)
         segment_b_completion_code = self.compute_segment_b()
-        if segment_b_completion_code == 1.0:  # segment b constructed successfully
+        if segment_b_completion_code == 0:  # segment b constructed successfully
             self.duration = self.duration_a + self.duration_b
             self.length = self.length_a + self.length_b
             self.compute_costs()
             if can_plot: self.compute_plot_components()
             self.creation_succeeded = True
         else: # If segment B failed to converge (typically because final_speed_a < 1.002 * water_velocity, or required u_b = v) just give this solution high costs, so it will be ignored by the genetic algorithm
-            self.convergence_failed(6.0 + segment_b_completion_code)
+            self.convergence_failed('6', segment_b_completion_code)
 
-    def convergence_failed(self, failure_code):
+    def convergence_failed(self, failure_code, failure_subcode):
         """ Failure code will be 6.something if segment B failed to converge above, 5 if initial_t is not finite"""
         self.duration = CONVERGENCE_FAILURE_COST
         self.length = CONVERGENCE_FAILURE_COST
         self.cost = CONVERGENCE_FAILURE_COST
         self.convergence_failure_code = failure_code
+        if failure_subcode != 0:
+            self.convergence_failure_code += '.' + str(failure_subcode)
         self.creation_succeeded = False
-        
-    def print_root_function_inputs(self):
+
+    def thrust_a_adjusted_for_tailbeats(self, thrust_a):
+        return thrust_a_adjusted_for_tailbeats(thrust_a, self.initial_t, self.initial_x, self.initial_speed, self.mean_water_velocity, self.fish_total_length)
+
+    def print_root_function_inputs_for_t_a(self):
         print("Root function inputs for t_a: {v=", self.mean_water_velocity, ", tauTimesUf=", self.tau_times_thrust, ", tp=", self.initial_t, ", xp=", self.initial_x, ", ut3=", self.initial_speed, ", ua=", self.thrust_a,"}")
         
     def min_t_a_root_function(self, t_a):
@@ -114,7 +155,7 @@ class ManeuverFinalStraight(object):
         tp = self.initial_t
         xp = self.initial_x
         ut3 = self.initial_speed
-        ua = self.thrust_a
+        ua = self.thrust_a # todo maybe something about this in the min/max is the reason for so many convergence failures? or erroneous estimate of duration_a?
         ta = t_a
         if abs((ta*ua)/tauTimesUf) < EXP_OVERFLOW_THRESHOLD:
             return (ta + tp)*v + xp + tauTimesUf*np.log(16) - tauTimesUf*(2*np.log((ua + (2*ua*(-ua + ut3))/(ua - ut3 + np.exp((ta*ua)/tauTimesUf)*(ua + ut3)) + v)/v) + np.log((4*(ua*np.cosh((ta*ua)/(2.*tauTimesUf)) + ut3*np.sinh((ta*ua)/(2.*tauTimesUf)))**2)/ua**2))
@@ -164,16 +205,18 @@ class ManeuverFinalStraight(object):
                 if t_a < range_min:
                     t_a = range_min + (range_min - t_a)
                 root_func_value = self.min_t_a_root_function(t_a)
+                # print("Iterating through min_t_a of", t_a,"with root function value", root_func_value)
                 converged = abs(root_func_value) < CONVERGENCE_TOLERANCE_T_A_BOUNDS
                 if converged: break
             if not np.isfinite(t_a):
-                self.print_root_function_inputs()
-                print("Allowed range min for min t_a was", range_min, "and initial guess was", initial_guess, ".")
+                self.print_root_function_inputs_for_t_a()
+                print("Allowed minimum for min_t_a was", range_min, "and initial guess was", initial_guess, ".")
                 raise ValueError('Min t_a was not finite for the final segment.')
             elif not converged:
                 print("Allowed range min for min t_a was", range_min, "and initial guess was", initial_guess, ".")
+                print("The thrust_a was",self.true_thrust_a,"exerted",self.thrust_a,"adjusted","and water velocity was ",self.mean_water_velocity)
                 print("Min t_a was not found within tolerance. Value was min t_a=",t_a," with root function value=",self.min_t_a_root_function(t_a),".")
-                self.print_root_function_inputs()
+                self.print_root_function_inputs_for_t_a()
                 raise ValueError('Min_t_a failed to converge within tolerance.') # kill the program right here if convergence fails
             return t_a
 
@@ -236,18 +279,20 @@ class ManeuverFinalStraight(object):
                 if t_a < range_min:
                     t_a = range_min + (range_min - t_a)
                 root_func_value = self.max_t_a_root_function(t_a)
+                # print("Iterating through max_t_a of", t_a,"with root function value", root_func_value)
                 converged = abs(root_func_value) < CONVERGENCE_TOLERANCE_T_A_BOUNDS
                 if converged: break
             if not np.isfinite(t_a):
-                self.print_root_function_inputs()
-                print("Allowed range min for max t_a was", range_min, "and initial guess was", initial_guess, ".")
+                self.print_root_function_inputs_for_t_a()
+                print("Allowed minimum for max_t_a was", range_min, "and initial guess was", initial_guess, ".")
                 print("Earlier calculated min_t_a of",self.min_t_a,"with root function value",self.min_t_a_root_function(self.min_t_a))
                 raise ValueError('Max t_a was not finite for the final segment.')
             elif not converged:
                 print("Allowed range min for max t_a was", range_min, "and initial guess was", initial_guess, ".")
                 print("Earlier calculated min_t_a of",self.min_t_a,"with root function value",self.min_t_a_root_function(self.min_t_a))
+                print("The thrust_a was",self.true_thrust_a,"exerted",self.thrust_a,"adjusted","and water velocity was ",self.mean_water_velocity)
                 print("Max t_a was not found within tolerance. Value was max t_a=",t_a," with root function value=",self.max_t_a_root_function(t_a),".")
-                self.print_root_function_inputs()
+                self.print_root_function_inputs_for_t_a()
                 raise ValueError('Max_t_a failed to converge within tolerance.') # kill the program right here if convergence fails
             return t_a
 
@@ -294,15 +339,35 @@ class ManeuverFinalStraight(object):
             return np.array(((det*df2dtb,-det*df1dtb),(-det*df2dub,det*df1dub)))  # Numba chokes trying to multiply the determinant times the full array object
         else:
             return np.array(((np.nan,np.nan),(np.nan,np.nan)))
-        
+
+    def print_space_for_segment_b(self):
+        """ This will print the fish's anticipated position at the end of segment A if it uses min_t_a or max_t_a, as compared to teh focal point position"""
+        print("-------------------------------------------------------------------------------------------------------------")
+        fish_position_with_min_t_a = self.initial_x  - s_t(self.initial_speed, self.thrust_a, self.min_t_a, self.tau_times_thrust / self.thrust_a)
+        focal_position_with_min_t_a = (-self.mean_water_velocity * (self.initial_t + self.min_t_a))
+        diff_min_t_a = fish_position_with_min_t_a - focal_position_with_min_t_a
+        print("At end of segment A if it used min_t_a =", self.min_t_a, ": fish x=", fish_position_with_min_t_a, "vs focal x=", focal_position_with_min_t_a, "diff=",diff_min_t_a)
+        fish_position_with_max_t_a = self.initial_x  - s_t(self.initial_speed, self.thrust_a, self.max_t_a, self.tau_times_thrust / self.thrust_a)
+        focal_position_with_max_t_a = (-self.mean_water_velocity * (self.initial_t + self.max_t_a))
+        diff_max_t_a = fish_position_with_max_t_a - focal_position_with_max_t_a
+        print("At end of segment A if it used max_t_a =", self.max_t_a, ": fish x=", fish_position_with_max_t_a, "vs focal x=", focal_position_with_max_t_a, "diff=",diff_max_t_a)
+        fish_position_with_duration_a = self.initial_x  - s_t(self.initial_speed, self.thrust_a, self.duration_a, self.tau_times_thrust / self.thrust_a)
+        focal_position_with_duration_a = (-self.mean_water_velocity * (self.initial_t + self.duration_a))
+        diff_duration_a = fish_position_with_duration_a - focal_position_with_duration_a
+        print("At end of segment A if it used duration_a =", self.duration_a, ": fish x=", fish_position_with_duration_a, "vs focal x=", focal_position_with_duration_a, "diff=",diff_duration_a)
+        print("Length_a is", self.length_a,"but should be", s_t(self.initial_speed, self.thrust_a, self.duration_a, self.tau_times_thrust / self.thrust_a))
+
     def print_segment_b_inputs(self):
+        print("-------------------------------------------------------------------------------------------------------------")
         print("Inputs to segment B root function: {ut3=",self.initial_speed,",ua=",self.thrust_a,",v=",
               self.mean_water_velocity,",tauTimesUf=",self.tau_times_thrust,",tp=",self.initial_t,",xp=",
               self.initial_x,",utA=",self.final_speed_a,",stA=",self.length_a,",ta=",self.duration_a,"}")
         initial_guess = self.segment_b_initial_guess()
         print("Initial guess is {ub=", initial_guess[0],",tb=", initial_guess[1],"}")
         x_space_left =  (self.initial_x - self.length_a) - (-self.mean_water_velocity * (self.initial_t + self.duration_a))
-        print("Space remaining for segment B was ", x_space_left," cm to change speed from ", self.final_speed_a," to ", self.mean_water_velocity," in segment B.")
+        print("Space remaining for segment B was ", x_space_left," cm to change speed from ", self.final_speed_a," to ", self.mean_water_velocity,"cm/s.")
+        duration_a_proportional = (self.duration_a - self.min_t_a) / (self.max_t_a - self.min_t_a)
+        print("Segment A length was", self.length_a, "cm, duration", self.duration_a, "s, which was proportion", duration_a_proportional, "of range from", self.min_t_a, "to", self.max_t_a)
         u_f = 0.0001 # effectively zero thrust
         tau = self.tau_times_thrust / u_f
         min_distance_required_to_match_speed = s_u(self.final_speed_a, u_f, self.mean_water_velocity, tau)
@@ -345,27 +410,35 @@ class ManeuverFinalStraight(object):
             for i in range(MAX_NEWTON_ITERATIONS):
                 if ub_tb[0] == v or abs(2 * (ub_tb[1] * ub_tb[0]) / self.tau_times_thrust) > EXP_OVERFLOW_THRESHOLD: # Will fail to converge with non-invertible Jacobian -- declare maneuver invalid
                     if ub_tb[0] == v:
-                        return 0.11 # failure code 0.11 -- typically arises from iterating below, not from initial guess
+                        return 1 # failure code 6.1 -- velocity for segment b converged to focal velocity, which should not allow catching up all the way
                     else:
-                        return 0.12 # failure code 0.12
+                        return 2 # failure code 6.2 -- Jacobian not invertible
                 f1 = self.segment_b_root_function_f1(ub_tb)
                 f2 = self.segment_b_root_function_f2(ub_tb)
                 ji = self.segment_b_jacobian_inverse(ub_tb)
                 ub_tb = np.abs(ub_tb - np.array([f1 * ji[0,0] + f2 * ji[0,1], f1 * ji[1,0] + f2 * ji[1,1]])) # manually write the matrix x vector product since np.matmul() wasn't in Numba earlier
                 if np.isnan(ub_tb[0]): # deal with extremely rare times the determinant somehow comes out to 0 for reasons other than overflow or ub == v
-                    return 0.2 # failure code 0.2
-                if abs(f1) + abs(f2) < CONVERGENCE_TOLERANCE_SEGMENT_B:
+                    return 3 # failure code 6.3
+                if abs(f1) + abs(f2) <= CONVERGENCE_TOLERANCE_SEGMENT_B:
                     break
             if abs(f1) + abs(f2) > CONVERGENCE_TOLERANCE_SEGMENT_B:
-                return 0.3 # failure code 0.3: this generally does not happen... any failures trigger the convergence warning above instead
-            self.thrust_b = max(ub_tb[0],self.fish_min_thrust) # just to prevent divide-by-zero if thrust_b converges toward 0
+                return 4 # failure code 6.4: reached max_newton_iterations without converging or hitting a known failure mode
+            self.thrust_b = max(ub_tb[0], self.fish_min_thrust) # just to prevent divide-by-zero if thrust_b converges toward 0
             self.duration_b = ub_tb[1]
             tau_b = self.tau_times_thrust / self.thrust_b
             self.length_b = s_t(self.final_speed_a, self.thrust_b, self.duration_b, tau_b)
-            return 1.0  # completion code 1.0 for success
+            return 0  # completion code 0 for success
         except Exception:
             print("Exception caught in compute_segment_b() for ManeuverFinalStraight in finalstraight.py")
-            self.convergence_failed(6.4)  # failure code total will be 6.4 for failed due to caught exception computing segment B
+            return 5 # failure code 6.5: unknown exception caught computing segment B
+
+    def new_adjusted_thrust_for_cost(self, thrust, initial_speed, duration):
+        initial_tailbeat_frequency = 1.3333333 * (1 + initial_speed / self.fish_total_length)
+        initial_tailbeat_duration = 1 / initial_tailbeat_frequency
+        if duration <= initial_tailbeat_duration:
+            return (2*initial_tailbeat_duration*thrust + duration*initial_speed - 2*initial_tailbeat_duration*initial_speed)/duration
+        else:
+            return (2*duration*thrust - initial_tailbeat_duration*initial_speed)/(2*duration + initial_tailbeat_duration)
 
     def compute_costs(self):
         """ Although the dynamics / motion equations of the maneuver have to use a single, common velocity (self.mean_water_velocity), it is useful to take into account that the
@@ -386,27 +459,34 @@ class ManeuverFinalStraight(object):
             # Set cost_a with adjustments if appropriate
             if self.duration_a > 0 and dv != 0 and not SENSITIVITY_DISABLE_FOCAL_RETURN_BENEFIT:
                 mean_speed_a = self.length_a / self.duration_a
-                self.adj_thrust_a = np.sqrt(dv ** 2 + self.thrust_a ** 2 - 2 * dv * mean_speed_a)
+                self.adj_thrust_a = np.sqrt(dv ** 2 + self.true_thrust_a ** 2 - 2 * dv * mean_speed_a)
                 if np.isnan(self.adj_thrust_a): # it doesn't seem this condition is ever triggered, but handling it just in case
                     self.adj_thrust_a = self.fish_min_thrust
+                #new_adj_thrust_a = self.new_adjusted_thrust_for_cost(self.adj_thrust_a, self.initial_speed, self.duration_a)
                 self.cost_a = self.swimming_cost_rate(self.adj_thrust_a) * self.duration_a
             else:
-                self.cost_a = self.swimming_cost_rate(self.thrust_a) * self.duration_a
+                #new_adj_thrust_a = self.new_adjusted_thrust_for_cost(self.thrust_a, self.initial_speed, self.duration_a)
+                self.cost_a = self.swimming_cost_rate(self.true_thrust_a) * self.duration_a
+            #self.cost_a = self.swimming_cost_rate(new_adj_thrust_a) * self.duration_a
             # Set cost_b with adjustments if appropriate
             if self.duration_b > 0 and dv != 0 and not SENSITIVITY_DISABLE_FOCAL_RETURN_BENEFIT:
                 mean_speed_b = self.length_b / self.duration_b
                 self.adj_thrust_b = np.sqrt(dv ** 2 + self.thrust_b ** 2 - 2 * dv * mean_speed_b)
                 if np.isnan(self.adj_thrust_b):
                     self.adj_thrust_b = self.fish_min_thrust
-                else:
+                else: # todo why is this in an 'else' here but not for part a?
                     self.cost_b = self.swimming_cost_rate(self.adj_thrust_b) * self.duration_b
+                #new_adj_thrust_b = self.new_adjusted_thrust_for_cost(self.adj_thrust_b, self.final_speed_a, self.duration_b)
             else:
                 self.cost_b = self.swimming_cost_rate(self.thrust_b) * self.duration_b
+                #new_adj_thrust_b = self.new_adjusted_thrust_for_cost(self.thrust_b, self.final_speed_a, self.duration_b)
+            #self.cost_b = self.swimming_cost_rate(new_adj_thrust_b) * self.duration_b
+
             # Combine costs
             self.cost = self.cost_a + self.cost_b
         except Exception:
             print("Exception caught in compute_costs() for ManeuverFinalStraight in finalstraight.py")
-            self.convergence_failed(7.0)
+            self.convergence_failed('7', 0)
 
     def swimming_cost_rate(self, u_thrust):
         """ Rate of energy expenditure (J/s) for swimming at a given thrust. """

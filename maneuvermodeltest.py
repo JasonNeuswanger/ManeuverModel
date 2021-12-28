@@ -58,46 +58,10 @@ sns.lineplot(x=opt_model.tracked_nfe, y=opt_model.tracked_nfe_slowed_down)
 # It seems to be about one third of the effort
 
 
-# todo useful plot... show each parameter's value and what would happen to maneuver fitness if it were perturbed by +/- 5 %
-#
-# import matplotlib.pyplot as plt
-# import seaborn as sns
-# from maneuvermodel.visualize import param_labels
-# from maneuvermodel.maneuver import maneuver_from_proportions
-#
-# def plot_parameter_sensitivity(opt, display=True, export_path=None):
-#     opt_proportions = opt.proportions()
-#     plt.ioff()
-#     fig, axes = plt.subplots(3, 4, figsize=(18, 11))
-#     def replace_element(proportions, index, new_value):
-#         new_proportions = proportions.copy()
-#         new_proportions[index] = new_value
-#         return new_proportions
-#     for i, ax in enumerate(axes.reshape(-1)):
-#         p = opt_proportions[i]
-#         x = np.unique(np.clip(np.linspace(p - 0.05, p + 0.05, 301), 0, 1)) # go +/- 5 % from optimal param proportional value, but stopping at 0 or 1; always choose odd #
-#         y = [-maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).fitness for x_value in x]
-#         slowdowns = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).dynamics.was_slowed_down]
-#         sns.lineplot(x=x, y=y, ax=ax)
-#         sns.rugplot(slowdowns, ax=ax)
-#         ax.set_ylabel("Maneuver cost (J)")
-#         ax.set_xlabel("Proportional " + param_labels[i])
-#         ax.axvline(x=p, ls='dotted', color='0.0', label='Global Optimum')
-#     fig.suptitle("Proportional parameters (dotted line = optimum, orange ticks = had to slow down)")
-#     fig.tight_layout()
-#     if export_path is not None:
-#         fig.savefig(export_path)
-#     if display:
-#         fig.show()
-#     else:
-#         plt.close(fig)
-#
-# plot_parameter_sensitivity(opt)
-
 # todo main questions now...
 # 1. is it ever NOT ideal to minimize duration_a?
-# 2. probably LOTs of my function evals are being wasted by reshuffling after slowdowns
-# 3.
+# 2. many function evals are wasted after slowdowns, which create a crazy discontinuity
+#    when I'm bumping up against the boundary of overshooting with a very short final straight
 
 
 

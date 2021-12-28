@@ -90,10 +90,6 @@ def optimal_maneuver(fish, detection_point_3D, **kwargs):
     if not kwargs.get('suppress_output', False):
         if fittest_maneuver.energy_cost != CONVERGENCE_FAILURE_COST:
             print("Lowest energy cost after {0} iterations ({7:8d} evaluations, {8:5.1f} s) was {1:10.6f} joules. Mean speed {2:4.1f} cm/s, {3:5.2f} bodylengths/s. Metabolic rate {4:7.1f} mg O2/kg/hr ({5:4.1f}X SMR). {6}".format(optimization_model.epoch, fittest_maneuver.energy_cost, fittest_maneuver.mean_swimming_speed, fittest_maneuver.mean_swimming_speed_bodylengths, fittest_maneuver.mean_metabolic_rate, fittest_maneuver.mean_metabolic_rate_SMRs,label, fittest_maneuver.objective_function_evaluations, time_cost_s))
-            # if fittest_maneuver.dynamics.bad_thrust_b_penalty > 0:
-            #     print("The best maneuver included a penalty for a bad thrust in stage b of the final straight, penalty factor {0:.3f}.".format(fittest_maneuver.dynamics.bad_thrust_b_penalty))
-            # if fittest_maneuver.dynamics.violates_acceleration_limit_penalty > 0:
-            #     print("The best maneuver included a penalty for violating the acceleration limit, penalty factor {0:.3f}.".format(fittest_maneuver.dynamics.violates_acceleration_limit_penalty))
         else:
             print("Maneuver failed to converge in all possible paths/dynamics considered. Did not find an optimal maneuver.")
             if hasattr(fittest_maneuver, 'convergence_failure_code'):

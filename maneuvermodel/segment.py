@@ -138,13 +138,29 @@ class ManeuverSegment(object):
         u_cost = np.sqrt(self.turn_factor * self.fish_webb_factor * u_thrust**2)
         return swimming_activity_cost(self.fish_base_mass, u_cost, self.fish_u_crit)
 
+    def time_averaged_u_thrust(self):
+        """ Principle: It takes an entire tailbeat to change thrust, and during the first tailbeat the effective thrust is the average of the
+            initial speed and the new exerted thrust. """
+        initial_tailbeat_frequency = 1.3333333 * (1 + self.u_i / self.fish_total_length)
+        initial_tailbeat_duration = 1 / initial_tailbeat_frequency
+        duration_estimate = t_s(self.u_i, self.u_thrust, self.length, self.tau(self.u_thrust)) # todo just preliminary, needs work
+        if duration_estimate <= initial_tailbeat_duration:
+            estimated_thrust_at_end = self.u_i + (self.u_thrust - self.u_i) * (duration_estimate / initial_tailbeat_duration)
+            mean_thrust = (self.u_i + estimated_thrust_at_end) / 2
+        else:
+            full_thrust_duration = duration_estimate - initial_tailbeat_duration
+            mean_thrust_during_first_tailbeat = (self.u_i + self.u_thrust) / 2
+            mean_thrust = self.u_thrust * (full_thrust_duration / duration_estimate) + mean_thrust_during_first_tailbeat * (initial_tailbeat_duration / duration_estimate)
+        return mean_thrust
+
     def calculate_dynamics(self):
         """Calculate the maneuver dynamics.
         Note that u_thrust is the thrust the fish is exerting (not counting the Webb factor w adjustment, which comes when calculating costs). During turns,
         some of that exertion is used to overcome centripetal force and does not contribute to forward motion along the path. Thus the adjusted u_f,
         which equals u_thrust during straights but is smaller during turns, describes the amount of thrust contributing to the equations of motion, but regular
         u_thrust is used for costs."""
-        u_f = self.u_thrust if not self.is_turn else np.sqrt(self.u_thrust**2 / self.turn_factor) # The turn-straight difference is built into turn_factor anyway, but the conditional here a little bit of processing time
+        u_thrust = self.time_averaged_u_thrust()
+        u_f = u_thrust if not self.is_turn else np.sqrt(u_thrust**2 / self.turn_factor) # The turn-straight difference is built into turn_factor anyway, but the conditional here a little bit of processing time
         tau = self.tau(u_f)
         self.duration = t_s(self.u_i, u_f, self.length, tau)
         self.cost = self.duration * self.swimming_cost_rate(self.u_thrust) # note: not using the turn-adjusted thrust (u_f) for costs, which are based on the force the fish EXERTS not force toward forward motion

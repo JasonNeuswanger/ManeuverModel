@@ -29,21 +29,12 @@ def proportion_of_range(value, range_min, range_max):
 
 @jit(float64(float64, float64, float64), nopython=True)
 def value_from_proportion(p, min_value, max_value):
-    # Pass a nonzero min_weight (between 0 and 1) to represent a proportion of time that values should be forced to 0.
-    # For example, pass min_weight of 0.3 for wait_time to make sure solutions consider no wait time 30 % of the time.
     if min_value < max_value:
         return min_value + p * (max_value - min_value)
-        # if min_weight == 0.0:
-        #     return min_value + p * (max_value - min_value)
-        # else:
-        #     if p > min_weight: # If using min_weight, rescale remaining proportion to fill the rest of the range
-        #         return min_value + ((p - min_weight) / (1 - min_weight)) * (max_value - min_value)
-        #     else:
-        #         return min_value
     elif min_value == max_value:
         return min_value
     else:
-        print("Min value was",min_value,"and max value was",max_value)
+        print("Min value was", min_value, "and max value was", max_value)
         raise ValueError('In solution.py, value_from_proportion got min_value > max_value.')
 
 maneuver_spec = [

@@ -9,9 +9,6 @@
 # Multiple by which the cost of steady swimming exceeds that of coasting
 ALPHA = 4 # standard value 4
 
-# Maximum allowed absolute value of acceleration or deceleration in cm/s^2, unless higher is absolutely necessary
-MAX_ACCELERATION = 100 # standard value 100
-
 #---------------------------------------------------------------------------------------------------------------#
 #---------------------------------------- Numerical algorithm settings -----------------------------------------#
 #---------------------------------------------------------------------------------------------------------------#
@@ -32,7 +29,7 @@ MAX_FINAL_TURN_X_LENGTH_MULTIPLE = 3
 EXP_OVERFLOW_THRESHOLD = 650
 
 # Controls for the use of Newton's Method in calculating the final straight
-MAX_NEWTON_ITERATIONS = 200 # normally only takes a few, this prevents failures to converge on oddball maneuvers
+MAX_NEWTON_ITERATIONS = 300 # normally only takes a few, but a high limit reduces failures to converge on oddball maneuvers
 CONVERGENCE_TOLERANCE_T_A_BOUNDS = 1e-7
 CONVERGENCE_TOLERANCE_SEGMENT_B = 1e-7
 
