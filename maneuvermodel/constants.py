@@ -22,7 +22,7 @@ MAX_TURN_RADIUS_MULTIPLE = 50
 
 # Similar to the max turn radius, this parameter exists only to constrain the numerical algorithm and avoid
 # wasting CPU cycles on unlikely parts of the solution space.
-MAX_FINAL_TURN_X_LENGTH_MULTIPLE = 3
+MAX_FINAL_TURN_X_LENGTH_MULTIPLE = 10
 
 # Value beyond which exp(value) overflows to inf in float64 arithmetic. I'm using using 650 to pad it, vs real
 # limit near 750, so other operations that might increase the number don't exceed 750 and overflow.

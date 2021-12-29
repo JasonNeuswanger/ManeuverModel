@@ -28,16 +28,16 @@ from .constants import CONVERGENCE_FAILURE_COST
 from numba import jit, float64, uint8, uint64, boolean, optional, types
 from numba.experimental import jitclass
 
-@jitclass([('position', float64[:]), ('fitness', float64), ('energy_cost', float64), ('pursuit_duration', float64), ('capture_x', float64), ('was_slowed_down', boolean), ('origin', uint8)])
+@jitclass([('position', float64[:]), ('fitness', float64), ('energy_cost', float64), ('pursuit_duration', float64), ('capture_x', float64), ('had_final_turn_adjusted', boolean), ('origin', uint8)])
 class SolutionSARO:
 
-    def __init__(self, position, fitness, energy_cost, pursuit_duration, capture_x, was_slowed_down, origin):
+    def __init__(self, position, fitness, energy_cost, pursuit_duration, capture_x, had_final_turn_adjusted, origin):
         self.position = position
         self.fitness = fitness
         self.energy_cost = energy_cost
         self.pursuit_duration = pursuit_duration
         self.capture_x = capture_x
-        self.was_slowed_down = was_slowed_down
+        self.had_final_turn_adjusted = had_final_turn_adjusted
         self.origin = origin # 0 for random, 1 for social phase, 2 for individual phase
 
 fish_type = ManeuveringFish.class_type.instance_type
@@ -45,7 +45,7 @@ solution_type = SolutionSARO.class_type.instance_type
 
 @jit(solution_type(solution_type), nopython=True)
 def copy_solution(s):
-    return SolutionSARO(s.position, s.fitness, s.energy_cost, s.pursuit_duration, s.capture_x, s.was_slowed_down, s.origin)
+    return SolutionSARO(s.position, s.fitness, s.energy_cost, s.pursuit_duration, s.capture_x, s.had_final_turn_adjusted, s.origin)
 
 saro_spec = [
     ('fish', fish_type),
@@ -55,7 +55,7 @@ saro_spec = [
     ('epoch', uint64),
     ('nfe', uint64),
     ('nfe_nonconvergent', uint64),                     # tracks the number of objective function evaluations (solutions tried) that weren't convergent
-    ('nfe_slowed_down', uint64),                     # tracks the number of objective function evaluations (solutions tried) that had to be slowed down
+    ('nfe_final_turn_adjusted', uint64),                     # tracks the number of objective function evaluations (solutions tried) that had to be slowed down
     ('pop_size', uint64),
     ('dims', uint8),
     ('problem_lb', uint8[:]),
@@ -67,15 +67,15 @@ saro_spec = [
     ('tracked', boolean),
     ('tracked_nfe', optional(uint64[:])),
     ('tracked_nfe_nonconvergent', optional(uint64[:])),
-    ('tracked_nfe_slowed_down', optional(uint64[:])),
+    ('tracked_nfe_final_turn_adjusted', optional(uint64[:])),
     ('tracked_convergence_failure_codes', optional(types.string)),
     ('tracked_energy_cost', optional(float64[:])),
     ('tracked_pursuit_duration', optional(float64[:])),
     ('tracked_capture_x', optional(float64[:])),
     ('tracked_position', optional(float64[:,:])),
-    ('tracked_best_was_slowed_down', optional(boolean[:])),
+    ('tracked_best_had_final_turn_adjusted', optional(boolean[:])),
     ('tracked_best_origin', optional(uint8[:])),
-    ('tracked_number_slowed_down', optional(uint64[:])),
+    ('tracked_number_with_final_turn_adjusted', optional(uint64[:])),
     ('label', optional(types.string)) # allows external code to label this model run for diagnostic testing
 ]
 
@@ -103,7 +103,7 @@ class CompiledSARO:
         self.pop_size = pop_size
         self.nfe = 0
         self.nfe_nonconvergent = 0
-        self.nfe_slowed_down = 0
+        self.nfe_final_turn_adjusted = 0
         self.se = se
         self.mu = mu
 
@@ -112,15 +112,15 @@ class CompiledSARO:
         if tracked:
             self.tracked_nfe = np.zeros(self.epoch+1, dtype=uint64)
             self.tracked_nfe_nonconvergent = np.zeros(self.epoch+1, dtype=uint64)
-            self.tracked_nfe_slowed_down = np.zeros(self.epoch+1, dtype=uint64)
+            self.tracked_nfe_final_turn_adjusted = np.zeros(self.epoch+1, dtype=uint64)
             self.tracked_convergence_failure_codes = ''
             self.tracked_energy_cost = np.zeros(self.epoch+1, dtype=float64)
             self.tracked_pursuit_duration = np.zeros(self.epoch+1, dtype=float64)
             self.tracked_capture_x = np.zeros(self.epoch+1, dtype=float64)
             self.tracked_position = np.zeros((self.epoch+1, self.dims), dtype=float64)
-            self.tracked_best_was_slowed_down = np.zeros(self.epoch+1, dtype=boolean)
+            self.tracked_best_had_final_turn_adjusted = np.zeros(self.epoch+1, dtype=boolean)
             self.tracked_best_origin = np.zeros(self.epoch+1, dtype=uint8)
-            self.tracked_number_slowed_down = np.zeros(self.epoch+1, dtype=uint64)
+            self.tracked_number_with_final_turn_adjusted = np.zeros(self.epoch+1, dtype=uint64)
 
     def solution_with_evaluated_fitness(self, p, origin):
         self.nfe += 1
@@ -130,9 +130,9 @@ class CompiledSARO:
             self.nfe_nonconvergent += 1
             if self.tracked:
                 self.tracked_convergence_failure_codes += '_' + maneuver.convergence_failure_code
-        if maneuver.dynamics.was_slowed_down:
-            self.nfe_slowed_down += 1
-        return SolutionSARO(new_p, maneuver.fitness, maneuver.energy_cost, maneuver.pursuit_duration, maneuver.capture_x, maneuver.dynamics.was_slowed_down, origin)
+        if maneuver.had_final_turn_adjusted:
+            self.nfe_final_turn_adjusted += 1
+        return SolutionSARO(new_p, maneuver.fitness, maneuver.energy_cost, maneuver.pursuit_duration, maneuver.capture_x, maneuver.had_final_turn_adjusted, origin)
 
     def evolve(self, master_pop):
         pop_x = master_pop[:self.pop_size].copy()
@@ -198,7 +198,7 @@ class CompiledSARO:
         if self.tracked:
             self.tracked_nfe[0] = self.nfe
             self.tracked_nfe_nonconvergent[0] = self.nfe_nonconvergent
-            self.tracked_nfe_slowed_down[0] = self.nfe_slowed_down
+            self.tracked_nfe_final_turn_adjusted[0] = self.nfe_final_turn_adjusted
             self.tracked_energy_cost[0] = master_pop[0].energy_cost
             self.tracked_pursuit_duration[0] = master_pop[0].pursuit_duration
             self.tracked_capture_x[0] = master_pop[0].capture_x
@@ -208,14 +208,14 @@ class CompiledSARO:
             if self.tracked:
                 self.tracked_nfe[epoch+1] = self.nfe
                 self.tracked_nfe_nonconvergent[epoch+1] = self.nfe_nonconvergent
-                self.tracked_nfe_slowed_down[epoch+1] = self.nfe_slowed_down
+                self.tracked_nfe_final_turn_adjusted[epoch+1] = self.nfe_final_turn_adjusted
                 self.tracked_energy_cost[epoch+1] = master_pop[0].energy_cost
                 self.tracked_pursuit_duration[epoch+1] = master_pop[0].pursuit_duration
                 self.tracked_capture_x[epoch+1] = master_pop[0].capture_x
                 self.tracked_position[epoch+1] = master_pop[0].position
-                self.tracked_best_was_slowed_down[epoch+1] = master_pop[0].was_slowed_down
+                self.tracked_best_had_final_turn_adjusted[epoch+1] = master_pop[0].had_final_turn_adjusted
                 self.tracked_best_origin[epoch+1] = master_pop[0].origin
-                self.tracked_number_slowed_down[epoch + 1] = len([sol for sol in master_pop if sol.was_slowed_down])
+                self.tracked_number_with_final_turn_adjusted[epoch + 1] = len([sol for sol in master_pop if sol.had_final_turn_adjusted])
         self.solution = master_pop[0]
         if verbose:
             print("Lowest energy cost was", self.solution.energy_cost, "J after", self.nfe,"evals  (", self.epoch,"x", self.pop_size,"; se = ", self.se,"; mu = ", self.mu, ").")

@@ -1,6 +1,7 @@
 import numpy as np
-from numba import int64, float64, boolean
+from numba import int64, float64, boolean, jit
 from numba.experimental import jitclass
+from .constants import MAX_TURN_RADIUS_MULTIPLE
 
 def print_path(path): # A non-compiled function to print the characteristics of a path for diagnostic purposes.
     print("Inputs for my Mathematica code to plot this maneuver")
@@ -57,6 +58,45 @@ maneuver_path_spec = [
     ('theta_3',float64)
 ]
 
+# @jit(nopython=True)
+# def compute_max_r3(min_r3, det_x, det_y, v, wait_time, r1, r2, final_turn_x):
+#     """ This function computes a maximum for r3 based on the requirement that circle 3 not overlap circle 2, calculated
+#         conservatively using the squares within which the circles are inscribed to make it tractable. It identifies
+#         situations in which final_turn_x as previously considered is not valid because it risks the circles overlapping,
+#         and it provides a different, valid final_turn_x when that is a problem. See ManeuverPath.__init__ for
+#         explanations of these variables and how they're computed."""
+#     # Compute several quantities duplicated from the maneuver path calculation below to enable the constraint calculation.
+#     eps = 2.23e-16  # actual minimum float is 2.2204460492503131e-16, found by np.finfo(float).eps, which can't be called in numba
+#     twopi = 2 * np.pi  # used more than once so might as well save a couple cycles
+#     Cy = det_y
+#     Cx = det_x + v * wait_time
+#     Hy = r1
+#     Kx = final_turn_x
+#     if Cx == -r1 or Cx == 0: Cx += eps  # avoid some discontinuities
+#     if Cx < 0:
+#         Bx = (Cx ** 2 * r1 ** 2 + (Cy - r1) * np.sqrt(Cx ** 2 * (Cx ** 2 + Cy * (Cy - 2 * r1)) * r1 ** 2)) / (Cx * (Cx ** 2 + (Cy - r1) ** 2))
+#         By = (Cx ** 2 * r1 + Cy * (Cy - r1) * r1 - np.sqrt(Cx ** 2 * r1 ** 2 * (Cx ** 2 + Cy ** 2 - 2 * Cy * r1))) / (Cx ** 2 + (Cy - r1) ** 2)
+#     else:
+#         Bx = (Cx ** 2 * r1 ** 2 + np.sqrt(Cx ** 2 * (Cx ** 2 + Cy * (Cy - 2 * r1)) * r1 ** 2) * (-Cy + r1)) / (Cx * (Cx ** 2 + (Cy - r1) ** 2))
+#         By = (Cx ** 2 * r1 + Cy * (Cy - r1) * r1 + np.sqrt(Cx ** 2 * (Cx ** 2 + Cy * (Cy - 2 * r1)) * r1 ** 2)) / (Cx ** 2 + (Cy - r1) ** 2)
+#     if Hy == By:
+#         Hy += eps
+#     dir2 = -1 if Cy > By else 1
+#     theta1 = np.arctan2(Bx, r1 - By)
+#     while theta1 > 0: theta1 -= twopi
+#     m = Bx / (Hy - By)
+#     sign1 = 1 if (Cx < -r1) or (-r1 < Cx and Cx < r1 and Cy < r1) else -1
+#     Jx = Cx - (dir2 * m * r2 ** 2 * sign1) / np.sqrt((1 + m ** 2) * r2 ** 2)
+#     Jy = Cy + (dir2 * r2 ** 2 * sign1) / np.sqrt((1 + m ** 2) * r2 ** 2)
+#     # Now compute the constraint itself.
+#     r3_lateral_constraint_max = np.abs(Jx - Kx) - r2
+#     r3_vertical_constraint_max = (np.abs(Jy) - r2) / 2
+#     r3_constraint_max = max(r3_lateral_constraint_max, r3_vertical_constraint_max)
+#     if r3_constraint_max > min_r3:
+#         return r3_constraint_max, final_turn_x
+#     else:
+#         return compute_max_r3(min_r3, det_x, det_y, v, wait_time, r1, r2, final_turn_x)
+
 @jitclass(maneuver_path_spec)
 class ManeuverPath(object):
     
@@ -75,7 +115,6 @@ class ManeuverPath(object):
         Hy = maneuver.r1
         r1 = maneuver.r1
         r2 = maneuver.r2
-        r3 = maneuver.r3
         eps = 2.23e-16 # actual minimum float is 2.2204460492503131e-16, found by np.finfo(float).eps, which can't be called in numba
         if Cx == -r1 or Cx == 0: Cx += eps # avoid some discontinuities
         # Calculate the first-turn tangent point (Bx, By) and angle theta1 between that and the focal point
@@ -98,8 +137,32 @@ class ManeuverPath(object):
         Jx = Cx - (dir2*m*r2**2*sign1)/np.sqrt((1 + m**2)*r2**2)
         Jy = Cy + (dir2*r2**2*sign1)/np.sqrt((1 + m**2)*r2**2)
         dir3 = -1 if (dir2 == 1 and Jy - r2 < 0) else 1
+        # Calculate the third turn, including calculating r3 from its proportional value and adjusting Kx = final_turn_x if need be
         Kx = maneuver.final_turn_x
-        Ky = dir3 * maneuver.r3
+
+        # todo THE BASIC IDEA HERE is to keep sliding final_turn_x to the right until there is room for r3, then put a max on r3 and set actual r3 from the proportions here with that max
+
+        # Now compute the constraint itself.
+        #print("\nIncoming final_turn_x is", Kx)
+        r3_lateral_constraint_max = np.abs(Jx - Kx) - r2
+        r3_vertical_constraint_max = (np.abs(Jy) - r2) / 2
+        max_r3 = max(r3_lateral_constraint_max, r3_vertical_constraint_max)
+        max_r3 = min(max_r3, MAX_TURN_RADIUS_MULTIPLE * maneuver.fish.min_turn_radius)  # trim to the overall max turn radius if needed
+        while max_r3 < maneuver.fish.min_turn_radius:
+            #print("Iterating from max_r3 of", max_r3,"with Kx=", Kx, "being increased to", Kx+1)
+            Kx += 1 # back up one cm per iteration to ensure convergence
+            r3_lateral_constraint_max = np.abs(Jx - Kx) - r2
+            r3_vertical_constraint_max = (np.abs(Jy) - r2) / 2
+            max_r3 = max(r3_lateral_constraint_max, r3_vertical_constraint_max)
+        r3 = maneuver.fish.min_turn_radius + maneuver.r3_proportional * (max_r3 - maneuver.fish.min_turn_radius)
+        maneuver.r3 = r3
+        maneuver.max_r3 = max_r3
+        maneuver.final_turn_x = Kx
+        #print("Outgoing final_turn_x is", maneuver.final_turn_x,"and max r3 is", max_r3,"and maneuver.r3 is", maneuver.r3)
+
+        # todo I will also eventually slide final_turn_x to the right for speed convergence instead of slowing the maneuver
+
+        Ky = dir3 * r3
         distJtoK = np.sqrt((Jx - Kx)**2 + (Jy - Ky)**2)
         # Validate the geometry now that point J is known, along with its distance to point K, and return with creation_succeeded = False if circles 2 and 3 aren't compatible
         if dir2 == -1: # counterclockwise -- circles 2 and 3 cannot overlap at all

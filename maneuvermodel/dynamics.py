@@ -34,15 +34,13 @@ maneuver_dynamics_spec = [
     ('fish_total_length', float64),
     ('fish_min_thrust', float64),
     ('fish_max_thrust', float64),
-    ('needs_to_slow_down', boolean),
-    ('was_slowed_down', boolean),
-    ('mean_of_pthrusts_except_last', float64),
+    ('needs_to_back_up_by', float64),
     ('v', float64) # shortcut to maneuver.mean_water_velocity
 ]
 
 @jitclass(maneuver_dynamics_spec)
 class ManeuverDynamics(object):
-    
+
     def __init__(self, maneuver):
         # Relevant attributes of the fish attribute are duplicated to avoid circular dependency among jitclasses
         fish = maneuver.fish
@@ -57,35 +55,14 @@ class ManeuverDynamics(object):
         self.fish_max_thrust = fish.max_thrust
         self.v = maneuver.mean_water_velocity
         # Create the initial maneuver segments and calculate their dynamics
-        self.needs_to_slow_down = False  # Gets set to True if the fish needs to slow down to let the focal point get in front of it by the end of turn 3
-        self.was_slowed_down = False
-        self.mean_of_pthrusts_except_last = np.mean(maneuver.pthrusts[:-1])
+        self.needs_to_back_up_by = 0.0  # Gets set to some number > 0 if the fish needs to slow down to let the focal point get in front of it by the end of turn 3
         try:
             self.build_segments(maneuver)    # This function will set the above flags to slow down or speed up if needed
         except Exception:
             print("Exception caught when building maneuver segments as initially called from ManeuverDynamics.__init__.")
-        loop_count = 0
-        speed_change_increment = 0.03
-        while self.check_if_needs_to_slow_down(maneuver): # or self.needs_to_speed_up:
-            self.was_slowed_down = True
-            for i in range(5):
-                slowdown_multiplier = 1 - speed_change_increment * (6 - i)
-                maneuver.pthrusts[i] *= slowdown_multiplier
-            self.mean_of_pthrusts_except_last = np.mean(maneuver.pthrusts[:-1])
-            try:
-                self.build_segments(maneuver)
-            except Exception:
-                print("Exception caught when looping through building of maneuver segments in ManeuverDynamics.__init__.")
-            loop_count += 1
-            if loop_count > 1/speed_change_increment:
-                if self.needs_to_slow_down:
-                    maneuver.convergence_failure_code = '2'
-                else:
-                    maneuver.convergence_failure_code = '3'
-                self.energy_cost = CONVERGENCE_FAILURE_COST
-                self.total_cost = CONVERGENCE_FAILURE_COST
-                return
-
+        self.needs_to_back_up_by = self.check_if_needs_to_back_up(maneuver)
+        if self.needs_to_back_up_by > 0:
+            return
         # Now that the end of turn 3 is somewhere downstream of the focal point, calculate the final straight to catch up to it
         try:
             x_p, t_p = self.penultimate_point(maneuver)
@@ -111,7 +88,6 @@ class ManeuverDynamics(object):
         self.total_cost = self.energy_cost + self.opportunity_cost
 
     def next_thrust_from_proportion(self, proportional_next_thrust, is_not_final_a):
-        # Calculate the minimum and maximum for the next thrust based on the acceleration limit, not accounting for the turn factor.
         min_next_thrust = self.fish_min_thrust if is_not_final_a else 1.02 * self.v
         max_next_thrust = self.fish_max_thrust
         next_thrust = min_next_thrust + (max_next_thrust - min_next_thrust) * proportional_next_thrust
@@ -119,7 +95,7 @@ class ManeuverDynamics(object):
 
     def build_segments(self, maneuver):
         """ Here we create each segment, starting with the proportional representations of the thrusts, creating each actual thrust (m/s) value
-            based on the speed at the end of the preceding segment and limits on acceleration/deceleration, then plugging it the resulting
+            based on the speed at the end of the preceding segment, then plugging it the resulting
             actual thrust (based on asymptotic speed in m/s) in to create the next segment."""
 
         maneuver.thrusts[0] = self.next_thrust_from_proportion(maneuver.pthrusts[0], True)
@@ -139,7 +115,7 @@ class ManeuverDynamics(object):
 
         maneuver.final_thrust_a = self.next_thrust_from_proportion(maneuver.final_pthrust_a, False)
 
-    def check_if_needs_to_slow_down(self, maneuver):
+    def check_if_needs_to_back_up(self, maneuver):
         """Now we check how long the arbitrary-thrust portions of the maneuver took, and make sure they left the fish at the end of turn 3 downstream of
            the focal point (higher x coordinate) and with enough time and space to slown down (if needed) to the focal velocity without overshooting the focal point.
            If that condition isn't met, we gradually slow down the rest of the maneuver by reducing thrusts until it is met."""
@@ -155,7 +131,13 @@ class ManeuverDynamics(object):
             s_0 = tau_times_thrust*np.log((u_a**2 - self.turn_3.final_speed**2)/(u_a**2 - self.v**2)) # min distance to speed up to v (at thrust u_a)
         fish_x_at_critical_point = (x_p - s_0) # critical point being the earliest point at which fish speed can match v
         focal_point_x_at_critical_point = -self.v * (t_p + t_0)
-        return focal_point_x_at_critical_point > fish_x_at_critical_point
+        if focal_point_x_at_critical_point > fish_x_at_critical_point:
+            amount_to_back_up = max(focal_point_x_at_critical_point - fish_x_at_critical_point, 0.01) # back up at least 0.01 cm to prevent lengthy cycling close to convergence but not quite there
+            #print("Reeturning needs_to_back_up value", amount_to_back_up)
+            return amount_to_back_up # turn 3 needs to back up and let focal point get in front
+        else:
+            #print("No longer needs to back up")
+            return 0 # turn 3 is fine
 
     def penultimate_point(self, maneuver):
         x_p = maneuver.path.tangent_point_F[0]

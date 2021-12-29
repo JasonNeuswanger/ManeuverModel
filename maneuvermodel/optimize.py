@@ -4,12 +4,15 @@ import matplotlib.pyplot as plt
 from .maneuver import maneuver_from_proportions
 from .saro_compiled import CompiledSARO
 from .constants import CONVERGENCE_FAILURE_COST
-from .visualize import param_labels
+from .visualize import param_labels, summarize_solution, plot_parameter_sensitivity
+import os
 
-def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Unnamed", export_path=None, display=True, iterations=500, n=100, global_iterations=1000, global_n=325, n_tests=10, se=0.5, mu=100):
+def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Unnamed", export_path=None, display=True, iterations=300, n=100, global_iterations=500, global_n=325, n_tests=10, se=0.5, mu=100):
     """ This is a wrapper for optimal_maneuver which runs it multiple times, once slowly with over-the-top resources
         to hopefully determine the global optimum for reference, and then n_tests times with more common run settings
         to see how well the algorithm converges under those conditions."""
+    if export_path is not None:
+        assert os.path.isdir(export_path), "Export path for run_convergence_test must be a valid directory."
     prey_velocity_passed = fish.focal_velocity if prey_velocity is None else prey_velocity
     print("Calculating global optimum...")
     global_opt, global_opt_model = optimal_maneuver(fish, detection_point_3D, prey_velocity=prey_velocity_passed, iterations=global_iterations, n=global_n, tracked=True, return_optimization_model=True)
@@ -20,11 +23,13 @@ def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Un
     ax.axhline(y=global_opt.energy_cost, ls='dotted', color='0.7', label='Global Optimum')
     ax3.axhline(y=global_opt.pursuit_duration, ls='dotted', color='0.7', label='Global Optimum')
     ax4.axhline(y=global_opt.capture_x, ls='dotted', color='0.7', label='Global Optimum')
+    stored_opts = []
     for _ in range(n_tests):
         opt, opt_model = optimal_maneuver(fish, detection_point_3D, prey_velocity=prey_velocity_passed, iterations=iterations, n=n, se=se, mu=mu, tracked=True, return_optimization_model=True)
+        stored_opts.append(opt)
         ax.plot(opt_model.tracked_nfe, opt_model.tracked_energy_cost, label="{0:7.6f} x Glob Opt".format(opt.energy_cost / global_opt.energy_cost))
-        ax3.plot(opt_model.tracked_nfe, opt_model.tracked_pursuit_duration, label="{0:7.6f}".format(opt.pursuit_duration))
-        ax4.plot(opt_model.tracked_nfe, opt_model.tracked_capture_x, label="{0:7.6f}".format(opt.capture_x))
+        ax3.plot(opt_model.tracked_nfe, opt_model.tracked_pursuit_duration, label="{0:7.6f} x Glob Opt".format(opt.pursuit_duration / global_opt.pursuit_duration))
+        ax4.plot(opt_model.tracked_nfe, opt_model.tracked_capture_x, label="{0:7.6f} x Glob Opt".format(opt.capture_x / global_opt.capture_x))
         ax.set_yscale('log')
     ax.set_ylabel("Maneuver activity cost (J)")
     ax3.set_ylabel("Pursuit duration (s)")
@@ -40,7 +45,14 @@ def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Un
     if label != "Unnamed": fig.suptitle(label)
     fig.tight_layout()
     if export_path is not None:
-        fig.savefig(export_path)
+        export_subpath = os.path.join(export_path, label)
+        if not os.path.exists(export_subpath):
+            os.makedirs(export_subpath)
+        fig.savefig(os.path.join(export_subpath, "{0} Convergence.pdf".format(label)))
+        summarize_solution(global_opt, display=False, should_print_dynamics=False, title="{0} Global Best".format(label), export_path=os.path.join(export_subpath, "{0} Global Best.pdf".format(label)), detailed=True, add_text_panel=True)
+        plot_parameter_sensitivity(global_opt, display=False, export_individual_maneuvers=False, export_path=os.path.join(export_subpath, "{0} Final Parameter Sensitivity.pdf".format(label)))
+        for i, opt in enumerate(stored_opts):
+            summarize_solution(opt, display=False, should_print_dynamics=False, title="{0} Replicate {1}".format(label, i), export_path=os.path.join(export_subpath, "{0} Replicate {1}.pdf".format(label, i)), detailed=True, add_text_panel=True)
     if display:
         fig.show()
     else:
@@ -68,10 +80,10 @@ def optimal_maneuver(fish, detection_point_3D, **kwargs):
                                       prey_velocity,
                                       xd,
                                       yd,
-                                      epoch=kwargs.get('iterations', 500),
-                                      pop_size=kwargs.get('n', 325),
+                                      epoch=kwargs.get('iterations', 300),
+                                      pop_size=kwargs.get('n', 100),
                                       se=kwargs.get('se', 0.6),
-                                      mu=kwargs.get('mu', 500),
+                                      mu=kwargs.get('mu', 300),
                                       dims=dims,
                                       tracked=kwargs.get('tracked', False))
     solution = optimization_model.solve()

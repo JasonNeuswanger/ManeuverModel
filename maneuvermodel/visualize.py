@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import matplotlib.lines as lines
 import matplotlib.colors as colors
 import seaborn as sns
@@ -16,13 +15,13 @@ param_labels = ['Thrust (turn 1)', 'Thrust (straight 1)', 'Thrust (turn 2)', 'Th
                 'Thrust (turn 3)', 'Radius (turn 1)', 'Radius (turn 2)', 'Radius (turn 3)',
                 'Thrust (straight 3A)', 'X (turn 3)', 'Duration (straight 3A)', 'Wait time']
 
-def summarize_solution(solution, display=True, title=None, export_path=None, should_print_dynamics=True, detailed=False, plot_dpi=132):
+def summarize_solution(solution, display=True, title=None, export_path=None, should_print_dynamics=True, detailed=False, add_text_panel=False, plot_dpi=132):
     if solution.dynamics.energy_cost >= CONVERGENCE_FAILURE_COST:
         print("Cannot summarize solution in which the final straight failed to converge.")
         return
     plt.ioff()  # set interactive mode to off so the plot doesn't display until show() is called
     sns.set_style('ticks')
-    figsize = (7.5, 5.0) if detailed else (6.5, 4.75)
+    figsize = (7.5+(2.6 if add_text_panel else 0), 5.0) if detailed else (6.5+(2.6 if add_text_panel else 0), 4.75)
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, facecolor='w', figsize=figsize, dpi=plot_dpi)
     dynamicstuple = solution.dynamics.plottable_segments(solution)
     if should_print_dynamics: print_dynamics(dynamicstuple, solution.dynamics, solution)
@@ -32,9 +31,9 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
     plot_swimming_costs(ax4, dynamicstuple, solution, detailed)
     if title is not None and detailed:
         fig.suptitle(title, fontsize=bigfontsize, weight='bold')
-        fig.subplots_adjust(top=0.88, bottom=0.24, left=0.09, right=0.90, hspace=0.6, wspace=0.6)
+        fig.subplots_adjust(top=0.88, bottom=0.24, left=0.09, right=(0.90 if not add_text_panel else 0.69), hspace=0.6, wspace=0.6)
     else:
-        fig.subplots_adjust(top=0.95, bottom=0.24, left=0.09, right=0.96, hspace=0.5, wspace=0.3)
+        fig.subplots_adjust(top=0.95, bottom=0.24, left=0.09, right=(0.96 if not add_text_panel else 0.65), hspace=0.5, wspace=0.3)
 
     line_segtrans = lines.Line2D([], [], color='k', label='Segment transition', linewidth=0.5, linestyle='dotted', alpha=0.4)
     line_focvel = lines.Line2D([], [], color='k', label='Focal velocity', linewidth=0.5, linestyle='-', dashes=[0.5, 0.5, 2, 0.5, 0.5, 0.5, 2, 0.5], alpha=0.4)
@@ -43,10 +42,46 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
     dot_focal_point = lines.Line2D([], [], color='k', label='Focal point', marker='s', markersize=3, linestyle='')
     dot_capture_point = lines.Line2D([], [], color='r', label='Capture point', marker='o', markersize=5, linestyle='')
     plt.legend(handles=[dot_focal_point, dot_capture_point, line_segtrans, line_focvel, line_steady, line_SMR], ncol=3, loc=(-1.35, -0.82), fontsize=smallfontsize)
-
     for ax in (ax1, ax2, ax3, ax4):
         sns.despine(ax=ax, top=True, right=True)
         ax.set(adjustable='datalim')
+    if add_text_panel:
+        p = solution.proportions()
+        dyn = solution.dynamics
+        text = "Energy cost:     {0:12.8f}\n".format(solution.energy_cost)
+        text += "Pursuit duration:{0:12.8f}\n".format(solution.pursuit_duration)
+        text += "Return duration: {0:12.8f}\n".format(solution.return_duration)
+        text += "Total duration:  {0:12.8f}\n".format(solution.duration)
+        text += "Fitness:         {0:12.8f}\n".format(solution.fitness)
+        text += "Total distance:   {0:12.8f}\n".format(solution.path.total_length)
+        text += "Mean speed        {0:12.8f}\n".format(solution.dynamics.mean_speed)
+        text += "Final_turn_x adjusted? {0}\n".format("Yes" if solution.had_final_turn_adjusted else "No")
+
+        text += "\n"
+        text += "Parameters\n"
+        text += "Turn 1 thrust: {0:7.3f} | {1:.3f}p\n".format(dyn.turn_1.u_thrust, p[0])
+        text += "Strt 1 thrust: {0:7.3f} | {1:.3f}p\n".format(dyn.straight_1.u_thrust, p[1])
+        text += "Turn 2 thrust: {0:7.3f} | {1:.3f}p\n".format(dyn.turn_2.u_thrust, p[2])
+        text += "Strt 2 thrust: {0:7.3f} | {1:.3f}p\n".format(dyn.straight_2.u_thrust, p[3])
+        text += "Turn 3 thrust: {0:7.3f} | {1:.3f}p\n".format(dyn.turn_1.u_thrust, p[4])
+        text += "Strt 3 thru_a: {0:7.3f} | {1:.3f}p\n".format(dyn.straight_3.thrust_a, p[8])
+        text += "Strt 3 thru_b: {0:7.3f} | (n/a)\n".format(dyn.straight_3.thrust_b)
+        text += "           r1: {0:7.3f} | {1:.3f}p\n".format(solution.r1, p[5])
+        text += "           r2: {0:7.3f} | {1:.3f}p\n".format(solution.r2, p[6])
+        text += "           r3: {0:7.3f} | {1:.3f}p\n".format(solution.r3, p[7])
+        text += " final_turn_x: {0:7.3f} | {1:.3f}p\n".format(solution.final_turn_x, p[9])
+        text += "   duration_a: {0:7.3f} | {1:.3f}p\n".format(dyn.straight_3.duration_a, p[10])
+        text += "    wait time: {0:7.3f} | {1:.3f}p\n".format(solution.wait_time, p[11])
+        text += "\n"
+        text += "Stage    Length   Cost       Time   EndSpd\n"
+        text += "Turn 1  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.turn_1.length, dyn.turn_1.cost, dyn.turn_1.duration, dyn.turn_1.final_speed)
+        text += "Strt 1  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.straight_1.length, dyn.straight_1.cost, dyn.straight_1.duration, dyn.straight_1.final_speed)
+        text += "Turn 2  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.turn_2.length, dyn.turn_2.cost, dyn.turn_2.duration, dyn.turn_2.final_speed)
+        text += "Strt 2  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.straight_2.length, dyn.straight_2.cost, dyn.straight_2.duration, dyn.straight_2.final_speed)
+        text += "Turn 3  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.turn_3.length, dyn.turn_3.cost, dyn.turn_3.duration, dyn.turn_3.final_speed)
+        text += "Str 3A  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.straight_3.length_a, dyn.straight_3.cost_a, dyn.straight_3.duration_a, dyn.straight_3.final_speed_a)
+        text += "Str 3B  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.straight_3.length_b, dyn.straight_3.cost_b, dyn.straight_3.duration_b, solution.mean_water_velocity)
+        fig.text(0.75, 0.93, text, transform=fig.transFigure, fontsize=7, family='monospace', va='top')
     if display:
         fig.show()
     if export_path is not None:
@@ -57,51 +92,6 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
 
 def preyarrow(ax, pt1, pt2, color, head_width, overhang=0.4):
     ax.arrow(pt1[0], pt1[1], pt2[0] - pt1[0], pt2[1] - pt1[1], color=color, length_includes_head=True, head_width=head_width, overhang=overhang)
-
-# def plot_water_coords_path(ax, path, detailed, padding=5):
-#    ax.set_aspect('equal')
-#    # Set up plotrange limits based on points it's necessary to show
-#    critical_pts = ((0,0),path.capture_point,path.tangent_point_B,path.tangent_point_D,path.tangent_point_E,path.tangent_point_F,path.focal_return_point,path.turn_1_center,path.turn_2_center,path.turn_3_center)
-#    critical_x_vals = [pt[0] for pt in critical_pts]
-#    critical_y_vals = [pt[1] for pt in critical_pts]
-#    x_range = max(critical_x_vals) - min(critical_x_vals)
-#    y_range = max(critical_y_vals) - min(critical_y_vals)
-#    ax.set_xlim(xmin = min(critical_x_vals)-0.05*x_range, xmax = max(critical_x_vals)+0.05*x_range)
-#    ax.set_ylim(ymin = min(critical_y_vals)-0.05*y_range, ymax = max(critical_y_vals)+0.05*y_range)  
-#    # Set up the artists
-#    ax.add_artist(plt.Circle(path.turn_1_center,path.turn_1_radius, fill=False)) # Pursuit turn circle
-#    ax.add_artist(plt.Circle(path.turn_2_center,path.turn_2_radius, fill=False)) # Return turn circle
-#    ax.add_artist(plt.Circle(path.turn_3_center,path.turn_3_radius, fill=False)) # Final turn circle
-#    ax.add_artist(patches.Arc(path.turn_1_center,2*path.turn_1_radius, 2*path.turn_1_radius, theta1 = path.turn_1_angles[1]*180/np.pi, theta2 = path.turn_1_angles[0]*180/np.pi, linewidth=1.5, color='b')) # Pursuit turn arc
-#    ind2 = (1, 0) if path.turn_2_direction > 0 else (0, 1) # prevoiusly had <
-#    ind3 = (1, 0) if path.turn_3_direction > 0 else (0, 1)
-#    ax.add_artist(patches.Arc(path.turn_2_center,2*path.turn_2_radius, 2*path.turn_2_radius, theta1 = path.turn_2_angles[ind2[0]]*180/np.pi, theta2 = path.turn_2_angles[ind2[1]]*180/np.pi, linewidth=1.5, color='b')) # Return turn arc
-#    ax.add_artist(patches.Arc(path.turn_3_center,2*path.turn_3_radius, 2*path.turn_3_radius, theta1 = path.turn_3_angles[ind3[0]]*180/np.pi, theta2 = path.turn_3_angles[ind3[1]]*180/np.pi, linewidth=1.5, color='b')) # Final turn arc
-#    ax.add_artist(lines.Line2D((path.tangent_point_B[0],path.capture_point[0]),(path.tangent_point_B[1],path.capture_point[1]), color='b', linewidth=1.5))
-#    ax.add_artist(lines.Line2D((path.tangent_point_D[0],path.tangent_point_E[0]),(path.tangent_point_D[1],path.tangent_point_E[1]), color='b', linewidth=1.5))
-#    ax.arrow(path.tangent_point_F[0], path.tangent_point_F[1], path.focal_return_point[0]-path.tangent_point_F[0], path.focal_return_point[1]-path.tangent_point_F[1], color='b', linewidth=1.5, length_includes_head=True, head_width=0.025*x_range, overhang=0.4)
-#    def plot_dot(coords, color='k', size=3, marker='o'): ax.plot(coords[0],coords[1], marker=marker, ls='', color=color, markersize=size, zorder=10)
-#    plot_dot((0, 0), marker='s')
-#    #plot_dot(path.turn_1_center)
-#    #plot_dot(path.turn_2_center)
-#    plot_dot(path.capture_point, color='r', size=5)
-#    #plot_dot(path.tangent_point_1)
-#    #plot_dot(path.tangent_point_2)
-#    plot_dot(path.focal_return_point, marker='s')
-#    if abs(path.capture_point[0] - path.detection_point[0]) > 0.001:
-#        arrowsize = min(path.turn_1_radius / 6.0, max(abs(ax.get_xlim()[1] - ax.get_xlim()[0]),abs(ax.get_ylim()[1] - ax.get_ylim()[0]))/60)
-#        preyarrow(ax, path.detection_point, path.capture_point, 'g', head_width = 0.8*arrowsize)
-#    ax.set_xlabel('x (cm)', fontsize=smallfontsize)
-#    ax.set_ylabel('y (cm)', fontsize=smallfontsize)
-#    ax.text(-0.21, 1.06, 'a', transform=ax.transAxes, size=bigfontsize, weight='bold')
-#    #r1text = r'$r_1$' + ' = {0:.3f} '.format(path.turn_1_radius/path.min_turn_radius) + r'$r_{min}$' 
-#    #r2text = r'$r_2$' + ' = {0:.3f} '.format(path.turn_2_radius/path.min_turn_radius) + r'$r_{min}$'
-#    #ax.text(.05,0.9,r1text + ', ' + r2text, fontsize=smallestfontsize, transform = ax.transAxes)
-#    #ax.text(.05,0.8,r'$dir_2$' + ' = ' + str(path.turn_2_direction), fontsize=smallestfontsize, transform = ax.transAxes)
-#    if detailed:
-#        ax.set_title('Maneuver path in water coordinates (total length = {0:.1f} cm)'.format(path.total_length), fontsize=smallfontsize)
-#    else:
-#        ax.set_title('Water coordinates', fontsize=smallfontsize)
 
 def build_spatial_path(dynamicstuple, solution, v):
     # Pass this v = 0 for water coords, v = maneuver.mean_water_velocity for ground coords
@@ -305,10 +295,6 @@ def plot_dynamics(ax, dynamicstuple, maneuver, detailed):
         ax2.set_ylim(ymin=0.01 * 1.03 * min(accelerations), ymax=0.01 * 1.03 * max(accelerations))
         # sns.despine(ax=ax2, top=True, left=True) # this would be nice, but despine seems to have a bug and messes up the twinning, moving the axis to the left side instead
 
-    # The commented part below can be turned on to visualize the maximum acceleration based on Webb 1978 of 33 m/s^2 for rainbow trout. Pretty much a vertical line.
-    # xlim, ylim = ax.get_xlim(), ax.get_ylim() # get axes limits based on data points only
-    # ax.plot((0,0), (1,3300), label='observed = predicted', linewidth=1.5, linestyle='dashed', color = 'green')
-    # ax.set_xlim(xlim), ax.set_ylim(ylim) # restore axes based on data points only so they don't expand out to 1000 units from the 1:1 line
     ax.set_xlabel('Time (s)', fontsize=smallfontsize)
     ax.set_ylabel('Speed (cm/s)', fontsize=smallfontsize)
     ymax = 1.03 * max([max(turn_1.plotspeeds), max(turn_2.plotspeeds), max(turn_3.plotspeeds), max(straight_1.plotspeeds), max(straight_2.plotspeeds), max(straight_3.plotspeeds)])
@@ -353,7 +339,7 @@ def plot_swimming_costs(ax, dynamicstuple, solution, detailed):
     if detailed:
         ax.set_title('Cost ({0:.5f} J + {1:.5f} J from SMR)'.format(solution.dynamics.energy_cost, SMR * solution.dynamics.duration), fontsize=smallfontsize)
 
-def plot_parameter_sensitivity(opt, display=True, export_path=None):
+def plot_parameter_sensitivity(opt, display=True, export_individual_maneuvers=False, export_path=None):
     opt_proportions = opt.proportions()
     plt.ioff()
     fig, axes = plt.subplots(3, 4, figsize=(18, 11))
@@ -365,9 +351,9 @@ def plot_parameter_sensitivity(opt, display=True, export_path=None):
         p = opt_proportions[i]
         x = np.unique(np.clip(np.linspace(p - 0.05, p + 0.05, 301), 0, 1)) # go +/- 5 % from optimal param proportional value, but stopping at 0 or 1; always choose odd #
         y = [-maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).fitness for x_value in x]
-        slowdowns = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).dynamics.was_slowed_down]
+        final_turn_x_adjustments = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).had_final_turn_adjusted]
         sns.lineplot(x=x, y=y, ax=ax)
-        sns.rugplot(slowdowns, ax=ax)
+        sns.rugplot(final_turn_x_adjustments, ax=ax)
         ax.set_ylabel("Maneuver cost (J)")
         ax.set_xlabel("Proportional " + param_labels[i])
         ax.set_ylim(ymin=-0.9*opt.fitness, ymax=-2.0*opt.fitness)

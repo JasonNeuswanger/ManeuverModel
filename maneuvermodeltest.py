@@ -48,42 +48,43 @@ test_fish = create_typical_fish('Dolly Varden', use_total_cost=False)
 species = 'Dolly Varden'
 detection_point_3D = (-typical[species]['detection_distance'] / 1.414, typical[species]['detection_distance'] / 1.414, 0.0)
 prey_velocity = typical[species]['prey_velocity']
-# opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D, prey_velocity=prey_velocity)
-opt, opt_model = optimize.optimal_maneuver(typical_fish[species], detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, tracked=True, return_optimization_model=True)
+#opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D, prey_velocity=prey_velocity)
+opt, opt_model = optimize.optimal_maneuver(typical_fish[species], n=100, iterations=500, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, tracked=True, return_optimization_model=True)
+
+# todo okay so this slowed things way the hell down but seems to have greatly improved convergence
+# todo in the morning, I need to figure out how to keep the benefit of adjusting the back-up amount based on the fish-focal distance,
+# todo but without screwing everything up... theoretically I should adjust the distance difference by how far the focal point moves in that time too maybe?
+# todo also last but not least still remove unnecessary param(s)
+# first wonky one still gets trapped in a local... even the long-iteration one got trapped
+
+# visualize.summarize_solution(opt, display = True, title = 'Typical Dolly', export_path = None, detailed=True, add_text_panel=True)
 
 
 # Testing the number of function evaluations requiring slowdowns over time and therefore basically lost in the algorithm
 import seaborn as sns
-sns.lineplot(x=opt_model.tracked_nfe, y=opt_model.tracked_nfe_slowed_down)
-# It seems to be about one third of the effort
+sns.lineplot(x=opt_model.tracked_nfe, y=opt_model.tracked_nfe_final_turn_adjusted)
+# previously about one third of the effort was wasted evaluating solutions that slowed down and went haywire
 
+print(opt_model.tracked_best_had_final_turn_adjusted)
+
+# So we still have about 25 % wasted solutions due to adjustments...
+# These are because we're bumping right up against the edge of what's allowed.
 
 # todo main questions now...
 # 1. is it ever NOT ideal to minimize duration_a?
 # 2. many function evals are wasted after slowdowns, which create a crazy discontinuity
 #    when I'm bumping up against the boundary of overshooting with a very short final straight
 
+# TODO:
+# implement option for visualize.plot_parameter_sensitivity
 
 
 
 
+# todo also make my convergence tests plot out the details of the solutions that converged differently, to show how different they are
 
 
 
-
-import matplotlib.pyplot as plt
-param_values = opt_model.tracked_position.transpose()
-plot_x = np.arange(len(param_values[0]))
-for i, pv in enumerate(param_values): plt.plot(plot_x, pv, label=i)
-plt.legend()
-
-# todo in the morning
-# Fix my main run_convergence_test function for the new saro_compiled, and build in some version of the above crude 5 lines to track parameter values as they converge
-# consider removing final_duration_a as a parameter because thrust overwhelmingly dictates duration, and making it a strategy variable within that narrow range is silly
-# Maybe plot what happens when we tweak it from min to max of its range (did that below, min of range is best)
-# It's a very tiny difference so it takes a while for the solution to settle in, but it tends to get there eventually
-
-# test.dynamics.straight_3.thrust_b
 
 # todo There's a case to be made that it
 
