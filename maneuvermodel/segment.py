@@ -139,11 +139,20 @@ class ManeuverSegment(object):
         return swimming_activity_cost(self.fish_base_mass, u_cost, self.fish_u_crit)
 
     def time_averaged_u_thrust(self):
-        """ Principle: It takes an entire tailbeat to change thrust, and during the first tailbeat the effective thrust is the average of the
-            initial speed and the new exerted thrust. """
+        """ Principle: Assume it takes one entire tailbeat (a full oscillation of the tail) to fully affect a change
+            in thrust. Within less than one tailbeat's duration, the thrust experienced physically is assumed to linearly
+            increase from one equal the previous velocity to the thrust exerted at the end of the tailbeat. Thrust for
+            an entire maneuver segment is calculated by time-averaging this first tailbeat with subsequent tailbeats at
+            full thrust, which means this ramp-up period has a strong effect on segments << 1 tailbeat in duration and
+            a gradually weaker one up to and beyond 1 tailbeat in duration. This prevents the fish from using drastic
+            changes in thrust to affect "optimal" near-instantaneous major changes in speed in different directions
+            within an implausibly tiny fraction of a second. One difficulty is that we do not yet know the actual duration
+            of the segment (and therefore the true weight of the first tailbeat vs the others for computing experienced
+            thrust) until the thrust is calculated. So we assume actual = exerted thrust and use t_s() to calculate an
+            estimate of that duration in advance of learning the true number. """
         initial_tailbeat_frequency = 1.3333333 * (1 + self.u_i / self.fish_total_length)
         initial_tailbeat_duration = 1 / initial_tailbeat_frequency
-        duration_estimate = t_s(self.u_i, self.u_thrust, self.length, self.tau(self.u_thrust)) # todo just preliminary, needs work
+        duration_estimate = t_s(self.u_i, self.u_thrust, self.length, self.tau(self.u_thrust))
         if duration_estimate <= initial_tailbeat_duration:
             estimated_thrust_at_end = self.u_i + (self.u_thrust - self.u_i) * (duration_estimate / initial_tailbeat_duration)
             mean_thrust = (self.u_i + estimated_thrust_at_end) / 2

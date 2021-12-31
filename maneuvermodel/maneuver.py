@@ -54,7 +54,6 @@ maneuver_spec = [
     ('pthrusts', float64[:]),                  # proportional versions of the above corresponding to their place within their individual bounds
     ('final_thrust_a', float64),               # first thrust of the final straight, constrained differently than the rest
     ('final_pthrust_a', float64),              # proportional version of the first thrust of the final straight
-    ('final_duration_a_proportional', float64),
     ('fitness', float64),
     ('had_final_turn_adjusted', boolean),     # tracks whether this maneuver had final_turn_x adjusted to avoid overshooting the focal point
     ('duration', float64),  
@@ -78,7 +77,7 @@ maneuver_spec = [
 @jitclass(maneuver_spec)
 class Maneuver(object):
     
-    def __init__(self, fish, prey_velocity, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, det_x, det_y, ftap, fdap):
+    def __init__(self, fish, prey_velocity, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, det_x, det_y, ftap):
         self.fish = fish
         self.prey_velocity = prey_velocity
         self.mean_water_velocity = (prey_velocity + fish.focal_velocity) / 2.0
@@ -95,7 +94,6 @@ class Maneuver(object):
         self.final_pthrust_a = ftap
         self.thrusts = np.zeros(pthrusts.size, dtype=float64)     # just a placeholder of the right type
         self.final_thrust_a = ftap  # also just a placeholder of the right type; real value set in dynamics.build_segments()
-        self.final_duration_a_proportional = fdap
         self.had_final_turn_adjusted = False
         self.dynamics = None
         self.path = None
@@ -111,7 +109,6 @@ class Maneuver(object):
         for pthrust in self.pthrusts:
             print(pthrust)
         print("final_pthrust_a: ", self.final_pthrust_a)
-        print("final_duration_a_proportional: ", self.final_duration_a_proportional)
         print("det_x, det_y: ", self.det_x, ", ", self.det_y)
         print("wait_time: ", self.wait_time)
 
@@ -178,14 +175,14 @@ class Maneuver(object):
         return self.to_3D(gc_capture_point)
         
     def proportions(self): # Returns a representation of solution's current state as a numpy vector of proportions of the allowed range
-        p = np.empty(12, dtype=float64)
+        p = np.empty(11, dtype=float64)
         # Set wait time within bounds, if setting it at all
         if not (self.fish.disable_wait_time or self.det_x > 0): # make this the last element of the solution vector, absent if not needed
             max_x_for_wait = 0.0 if self.det_y > 2 * self.fish.min_turn_radius else -np.sqrt(2*self.fish.min_turn_radius*self.det_y - self.det_y**2)
             max_wait_time = (max_x_for_wait - self.det_x) / self.mean_water_velocity if self.det_x < max_x_for_wait else 0
         else:
             max_wait_time = 0
-        p[11] = proportion_of_range(self.wait_time, 0, max_wait_time)
+        p[10] = proportion_of_range(self.wait_time, 0, max_wait_time)
         # Set the capture point, given the wait time
         yc = self.det_y
         xc = self.det_x + self.mean_water_velocity * self.wait_time
@@ -204,7 +201,6 @@ class Maneuver(object):
         p[8] = self.final_pthrust_a
         # p[9] = proportion_of_range(self.final_turn_x, min_final_turn_x, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length)
         p[9] = proportion_of_range(self.final_turn_x, xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length)
-        p[10] = self.final_duration_a_proportional
         return p
     
 maneuver_type = Maneuver.class_type.instance_type
@@ -218,7 +214,7 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     if not (fish.disable_wait_time or xd > 0): # make this the last element of the solution vector, absent if not needed
         max_x_for_wait = 0.0 if yd > 2 * fish.min_turn_radius else -np.sqrt(2*fish.min_turn_radius*yd - yd**2)
         max_wait_time = (max_x_for_wait - xd) / mean_velocity if xd < max_x_for_wait else 0
-        wait_time = value_from_proportion(p[11], 0, max_wait_time)
+        wait_time = value_from_proportion(p[10], 0, max_wait_time)
     else:
         wait_time = 0
     # Set the capture point, given the wait time
@@ -237,13 +233,12 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     final_pthrust_a = p[8] # must be higher than the water velocity to catch up to the focal point (by at least 2 % to improve convergence)
     # min_final_turn_x = xc - 2 * (r2 + r3 + 2 * fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
     final_turn_x = value_from_proportion(p[9], xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length)
-    final_duration_a_proportional = p[10]
     # Creation solution object and return
-    return Maneuver(fish, prey_velocity, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a, final_duration_a_proportional)
+    return Maneuver(fish, prey_velocity, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a)
 
 @jit(maneuver_type(fish_type, float64, float64, float64), nopython=True)
 def random_maneuver(fish, prey_velocity, xd, yd):
-    p = np.random.rand(12)
+    p = np.random.rand(11)
     return maneuver_from_proportions(fish, prey_velocity, xd, yd, p)
     
 @jit(maneuver_type(fish_type, float64, float64, float64), nopython=True)
@@ -253,4 +248,3 @@ def convergent_random_maneuver(fish, prey_velocity, xd, yd): # quick helper to g
         maneuver = random_maneuver(fish, prey_velocity, xd, yd)
         maneuver_converged = maneuver.dynamics.energy_cost < CONVERGENCE_FAILURE_COST
     return maneuver
-

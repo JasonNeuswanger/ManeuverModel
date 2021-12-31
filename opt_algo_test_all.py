@@ -27,15 +27,15 @@ def objective_function(p):
 def problem_description(verbose=True):
     return {
         "obj_func": objective_function,
-        "lb": [0, ] * 12,
-        "ub": [1, ] * 12,
+        "lb": [0, ] * 11,
+        "ub": [1, ] * 11,
         "minmax": "max",
         "verbose": verbose,
     }
 
 def process_completion(model, plot=False):
     lowest_energy_cost = -model.solution[1][0]
-    n_function_evals = model.nfe_per_epoch * model.epoch
+    n_function_evals = model.nfe_per_epoch * model.max_iterations
     print("Lowest energy cost was {0} J after {1} fEvals.".format(lowest_energy_cost, n_function_evals))
     if plot:
         model.history.save_global_objectives_chart(filename="hello/goc")

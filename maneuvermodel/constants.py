@@ -47,9 +47,23 @@ SENSITIVITY_TURN_FACTOR_MULTIPLIER = 1.0
 # Multiplier on the amount by which the unsteady swimming webb_factor exceeds 1, similar to above.
 SENSITIVITY_WEBB_FACTOR_MULTIPLIER = 1.0
 
+#---------------------------------------------------------------------------------------------------------------#
+#--------------------------------------- Optimization Model Defaults-- -----------------------------------------#
+#---------------------------------------------------------------------------------------------------------------#
+
+DEFAULT_OPT_N = 100
+DEFAULT_OPT_ITERATIONS = 500
+
+SLOW_OPT_N = 300
+SLOW_OPT_ITERATIONS = 2000
+
+#---------------------------------------------------------------------------------------------------------------#
+#------------------------------------------ Experimental Features ----------------------------------------------#
+#---------------------------------------------------------------------------------------------------------------#
+
 # Switch to disable the mechanism that uses the focal velocity rather than maneuver velocity for the cost of the final straight
 # Set to True for sensitivity test, False for normal model runs.
-SENSITIVITY_DISABLE_FOCAL_RETURN_BENEFIT = False # todo this was true for my last full run! that explains a lot
+EXPERIMENTAL_ENABLE_FOCAL_RETURN_BENEFIT = True
 
 #---------------------------------------------------------------------------------------------------------------#
 #--------------------------------------- Sensitivity analysis to-do --------------------------------------------#

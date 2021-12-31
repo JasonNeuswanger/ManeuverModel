@@ -75,7 +75,7 @@ maneuvering_fish_spec = [
 @jitclass(maneuvering_fish_spec)
 class ManeuveringFish(object):
     
-    def __init__(self, fork_length, focal_velocity, mass, temperature, SMR, max_thrust, NREI, use_total_cost, disable_wait_time): # can't use **kwargs in a jitclass
+    def __init__(self, fork_length, focal_velocity, base_mass, temperature, SMR, max_thrust, NREI, use_total_cost, disable_wait_time): # can't use **kwargs in a jitclass
         # Note: Pass in mass and SMR of 0 to use the respective defaults for each
         self.fork_length = fork_length                     # fork length in cm
         self.focal_velocity = focal_velocity               # focal point water velocity in cm/s -- used to compute main maneuver speed and costs at focal point
@@ -95,10 +95,10 @@ class ManeuveringFish(object):
         self.total_length = -0.027 + 1.072*self.fork_length # Total length in cm from Simpkins & Hubert 1996 for rainbow trout, derived from Carlander 1969; this relationship had an R^2 of 0.999
         # Minimum turning radius, which I looked up from Webb 1976 (calibrated for rainbow trout from 9.6 to 38.7 cm)
         self.min_turn_radius = 0.17*self.total_length # cm; comes out to about 4.3 for default parameters
-        if mass == 0: # Provide a mass of 0 to use length-mass regression from Simpkins & Hubert 1996 for rainbow trout >= 120 mm: log_10 mass (grams) = -5.023 + 3.024 * log_10 total_length (mm)
+        if base_mass == 0: # Provide a mass of 0 to use length-mass regression from Simpkins & Hubert 1996 for rainbow trout >= 120 mm: log_10 mass (grams) = -5.023 + 3.024 * log_10 total_length (mm)
             self.base_mass = 10**(-5.023 + 3.024 * np.log10(10*self.total_length)) # multiply by 10 to convert cm to the mm input of the original formula
         else:
-            self.base_mass = mass
+            self.base_mass = base_mass
         self.volume = self.base_mass # volume in cubic centimeters, because a neutrally buoyant fish has same density as water (1 g/cm^3) -- set this based on true base mass before modifying for tiny fish
         self.mass = self.base_mass * (1 + self.waterlambda) # mass in grams accounting account for entrained water mass
         self.area = 1.78 * self.fork_length**1.88 # From O'Shea et al 2006, formula for rainbow trout

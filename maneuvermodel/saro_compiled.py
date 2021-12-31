@@ -21,10 +21,16 @@
 #       many quantities relevant to evaluating convergence performance.                                 %
 # ------------------------------------------------------------------------------------------------------%
 
+# todo I could add "no improvement of objective function beyond some threshold" as a different convergence
+#    condition rather than running for a fixed number of iterations. This would be handy to speed things up
+#    in maneuvers that are easy to converge within only 10-20,000 function evaluations, and maybe to take
+#    longer on the ones that have trouble converging. This might actually be worth doing... I would set epoch
+#    in that case to be the maximum iterations allowed, and use the threshold otherwise if one is provided.
+
 import numpy as np
 from .maneuveringfish import ManeuveringFish
 from .maneuver import maneuver_from_proportions
-from .constants import CONVERGENCE_FAILURE_COST
+from .constants import CONVERGENCE_FAILURE_COST, DEFAULT_OPT_N, DEFAULT_OPT_ITERATIONS
 from numba import jit, float64, uint8, uint64, boolean, optional, types
 from numba.experimental import jitclass
 
@@ -52,10 +58,10 @@ saro_spec = [
     ('prey_velocity', float64),
     ('det_x', float64),                        # detection position x coord
     ('det_y', float64),                        # detection position y coord
-    ('epoch', uint64),
+    ('max_iterations', uint64),
     ('nfe', uint64),
-    ('nfe_nonconvergent', uint64),                     # tracks the number of objective function evaluations (solutions tried) that weren't convergent
-    ('nfe_final_turn_adjusted', uint64),                     # tracks the number of objective function evaluations (solutions tried) that had to be slowed down
+    ('nfe_nonconvergent', uint64),                 # tracks the number of objective function evaluations (solutions tried) that weren't convergent
+    ('nfe_final_turn_adjusted', uint64),           # tracks the number of objective function evaluations (solutions tried) that had to be slowed down
     ('pop_size', uint64),
     ('dims', uint8),
     ('problem_lb', uint8[:]),
@@ -82,14 +88,15 @@ saro_spec = [
 @jitclass(saro_spec)
 class CompiledSARO:
 
-    def __init__(self, fish, prey_velocity, det_x, det_y, epoch=1000, pop_size=100, se=0.5, mu=50, dims=12, tracked=False):
+    def __init__(self, fish, prey_velocity, det_x, det_y, max_iterations=DEFAULT_OPT_ITERATIONS, pop_size=DEFAULT_OPT_N, dims=11, tracked=False):
         """
         Args:
-            epoch (int): maximum number of iterations, default = 10000
-            pop_size (int): number of population size, default = 100
-            se (float): social effect, default = 0.5
-            mu (int): maximum unsuccessful search number, default = 50
+            max_iterations (int): maximum number of iterations
+            pop_size (int): number of population size
+            se (float): social effect
+            mu (int): maximum unsuccessful search number before randomization, doesn't seem to help on this solution
         """
+
         self.fish = fish
         self.prey_velocity = prey_velocity
         self.det_x = det_x
@@ -99,28 +106,28 @@ class CompiledSARO:
         self.problem_lb = np.zeros(dims, dtype=uint8)
         self.problem_ub = np.ones(dims, dtype=uint8)
 
-        self.epoch = epoch
+        self.max_iterations = max_iterations
         self.pop_size = pop_size
         self.nfe = 0
         self.nfe_nonconvergent = 0
         self.nfe_final_turn_adjusted = 0
-        self.se = se
-        self.mu = mu
+        self.se = 0.5 # social effect; hard-coding this because extensive testing shows it matters little but ~0.5 is narrowly best
+        self.mu = max_iterations # maximum unsuccessful search number before randomization; hard-coding this equal max_iterations to essentially disable that randomization mechanism, which did more harm than good
 
         self.dyn_USN = np.zeros(self.pop_size, dtype=uint64)
         self.tracked = tracked
         if tracked:
-            self.tracked_nfe = np.zeros(self.epoch+1, dtype=uint64)
-            self.tracked_nfe_nonconvergent = np.zeros(self.epoch+1, dtype=uint64)
-            self.tracked_nfe_final_turn_adjusted = np.zeros(self.epoch+1, dtype=uint64)
+            self.tracked_nfe = np.zeros(self.max_iterations + 1, dtype=uint64)
+            self.tracked_nfe_nonconvergent = np.zeros(self.max_iterations + 1, dtype=uint64)
+            self.tracked_nfe_final_turn_adjusted = np.zeros(self.max_iterations + 1, dtype=uint64)
             self.tracked_convergence_failure_codes = ''
-            self.tracked_energy_cost = np.zeros(self.epoch+1, dtype=float64)
-            self.tracked_pursuit_duration = np.zeros(self.epoch+1, dtype=float64)
-            self.tracked_capture_x = np.zeros(self.epoch+1, dtype=float64)
-            self.tracked_position = np.zeros((self.epoch+1, self.dims), dtype=float64)
-            self.tracked_best_had_final_turn_adjusted = np.zeros(self.epoch+1, dtype=boolean)
-            self.tracked_best_origin = np.zeros(self.epoch+1, dtype=uint8)
-            self.tracked_number_with_final_turn_adjusted = np.zeros(self.epoch+1, dtype=uint64)
+            self.tracked_energy_cost = np.zeros(self.max_iterations + 1, dtype=float64)
+            self.tracked_pursuit_duration = np.zeros(self.max_iterations + 1, dtype=float64)
+            self.tracked_capture_x = np.zeros(self.max_iterations + 1, dtype=float64)
+            self.tracked_position = np.zeros((self.max_iterations + 1, self.dims), dtype=float64)
+            self.tracked_best_had_final_turn_adjusted = np.zeros(self.max_iterations + 1, dtype=boolean)
+            self.tracked_best_origin = np.zeros(self.max_iterations + 1, dtype=uint8)
+            self.tracked_number_with_final_turn_adjusted = np.zeros(self.max_iterations + 1, dtype=uint64)
 
     def solution_with_evaluated_fitness(self, p, origin):
         self.nfe += 1
@@ -161,8 +168,8 @@ class CompiledSARO:
             pop_new.append(self.solution_with_evaluated_fitness(pos_new, 1))
         for i in range(self.pop_size):
             if pop_new[i].fitness > pop_x[i].fitness:
-                pop_m[np.random.randint(0, self.pop_size)] = copy_solution(pop_x[i]) # SolutionSARO(pop_x[i].position, pop_x[i].fitness)
-                pop_x[i] = copy_solution(pop_new[i]) # SolutionSARO(pop_new[i].position, pop_new[i].fitness)
+                pop_m[np.random.randint(0, self.pop_size)] = copy_solution(pop_x[i])
+                pop_x[i] = copy_solution(pop_new[i])
                 self.dyn_USN[i] = 0
             else:
                 self.dyn_USN[i] += 1
@@ -182,7 +189,7 @@ class CompiledSARO:
         for i in range(self.pop_size):
             if pop_new[i].fitness > pop_x[i].fitness:
                 pop_m[np.random.randint(0, self.pop_size)] = pop_x[i]
-                pop_x[i] = copy_solution(pop_new[i]) # SolutionSARO(pop_new[i].position, pop_new[i].fitness)
+                pop_x[i] = copy_solution(pop_new[i])
                 self.dyn_USN[i] = 0
             else:
                 self.dyn_USN[i] += 1
@@ -203,22 +210,22 @@ class CompiledSARO:
             self.tracked_pursuit_duration[0] = master_pop[0].pursuit_duration
             self.tracked_capture_x[0] = master_pop[0].capture_x
             self.tracked_position[0] = master_pop[0].position
-        for epoch in range(0, self.epoch):
+        for i in range(1, self.max_iterations+1):
             master_pop = self.evolve(master_pop)
             if self.tracked:
-                self.tracked_nfe[epoch+1] = self.nfe
-                self.tracked_nfe_nonconvergent[epoch+1] = self.nfe_nonconvergent
-                self.tracked_nfe_final_turn_adjusted[epoch+1] = self.nfe_final_turn_adjusted
-                self.tracked_energy_cost[epoch+1] = master_pop[0].energy_cost
-                self.tracked_pursuit_duration[epoch+1] = master_pop[0].pursuit_duration
-                self.tracked_capture_x[epoch+1] = master_pop[0].capture_x
-                self.tracked_position[epoch+1] = master_pop[0].position
-                self.tracked_best_had_final_turn_adjusted[epoch+1] = master_pop[0].had_final_turn_adjusted
-                self.tracked_best_origin[epoch+1] = master_pop[0].origin
-                self.tracked_number_with_final_turn_adjusted[epoch + 1] = len([sol for sol in master_pop if sol.had_final_turn_adjusted])
+                self.tracked_nfe[i] = self.nfe
+                self.tracked_nfe_nonconvergent[i] = self.nfe_nonconvergent
+                self.tracked_nfe_final_turn_adjusted[i] = self.nfe_final_turn_adjusted
+                self.tracked_energy_cost[i] = master_pop[0].energy_cost
+                self.tracked_pursuit_duration[i] = master_pop[0].pursuit_duration
+                self.tracked_capture_x[i] = master_pop[0].capture_x
+                self.tracked_position[i] = master_pop[0].position
+                self.tracked_best_had_final_turn_adjusted[i] = master_pop[0].had_final_turn_adjusted
+                self.tracked_best_origin[i] = master_pop[0].origin
+                self.tracked_number_with_final_turn_adjusted[i] = len([sol for sol in master_pop if sol.had_final_turn_adjusted])
         self.solution = master_pop[0]
         if verbose:
-            print("Lowest energy cost was", self.solution.energy_cost, "J after", self.nfe,"evals  (", self.epoch,"x", self.pop_size,"; se = ", self.se,"; mu = ", self.mu, ").")
+            print("Lowest energy cost was", self.solution.energy_cost, "J after", self.nfe,"evals  (", self.max_iterations, "x", self.pop_size, ".")
         return self.solution
 
     def create_random_solution(self):

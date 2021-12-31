@@ -80,7 +80,7 @@ def thrust_a_adjusted_for_tailbeats(thrust_a, tp, xp, ui, v, fish_total_length):
 @jitclass(maneuver_final_straight_spec)
 class ManeuverFinalStraight(object):
     
-    def __init__(self, fish, mean_water_velocity, initial_t, initial_x, initial_speed, thrust_a, duration_a_proportional, can_plot):
+    def __init__(self, fish, mean_water_velocity, initial_t, initial_x, initial_speed, thrust_a, can_plot):
         self.creation_succeeded = False
         self.convergence_failure_code = ''
         if not np.isfinite(initial_t):
@@ -116,7 +116,7 @@ class ManeuverFinalStraight(object):
             self.t_a_range_min = 0.0 if ut3 > ua else max(0.0, (self.tau_times_thrust*np.log(((ua - ut3)*(ua + v))/((ua + ut3)*(ua - v))))/ua)
             self.min_t_a = self.compute_min_t_a() # have to do min before max, then use min to set initial guess for max for best convergence
             self.max_t_a = self.compute_max_t_a()
-            self.duration_a = self.min_t_a + (self.max_t_a - self.min_t_a) * duration_a_proportional
+            self.duration_a = self.min_t_a + 0.5 * (self.max_t_a - self.min_t_a) # locking in the middle of the allowed range for duration_a, because the range is so narrow it would be pointless as an optimization parameter
             # Compute the rest of segment a, then b
             self.length_a = s_t(self.initial_speed, self.thrust_a, self.duration_a, tau_a)
             self.final_speed_a = u_t(self.initial_speed, self.thrust_a, self.duration_a, tau_a)
@@ -366,8 +366,7 @@ class ManeuverFinalStraight(object):
         print("Initial guess is {ub=", initial_guess[0],",tb=", initial_guess[1],"}")
         x_space_left =  (self.initial_x - self.length_a) - (-self.mean_water_velocity * (self.initial_t + self.duration_a))
         print("Space remaining for segment B was ", x_space_left," cm to change speed from ", self.final_speed_a," to ", self.mean_water_velocity,"cm/s.")
-        duration_a_proportional = (self.duration_a - self.min_t_a) / (self.max_t_a - self.min_t_a)
-        print("Segment A length was", self.length_a, "cm, duration", self.duration_a, "s, which was proportion", duration_a_proportional, "of range from", self.min_t_a, "to", self.max_t_a)
+        print("Segment A length was", self.length_a, "cm, duration", self.duration_a, "s, which was middle of range from", self.min_t_a, "to", self.max_t_a)
         u_f = 0.0001 # effectively zero thrust
         tau = self.tau_times_thrust / u_f
         min_distance_required_to_match_speed = s_u(self.final_speed_a, u_f, self.mean_water_velocity, tau)
@@ -432,16 +431,14 @@ class ManeuverFinalStraight(object):
             print("Exception caught in compute_segment_b() for ManeuverFinalStraight in finalstraight.py")
             return 5 # failure code 6.5: unknown exception caught computing segment B
 
-    def new_adjusted_thrust_for_cost(self, thrust, initial_speed, duration):
-        initial_tailbeat_frequency = 1.3333333 * (1 + initial_speed / self.fish_total_length)
-        initial_tailbeat_duration = 1 / initial_tailbeat_frequency
-        if duration <= initial_tailbeat_duration:
-            return (2*initial_tailbeat_duration*thrust + duration*initial_speed - 2*initial_tailbeat_duration*initial_speed)/duration
-        else:
-            return (2*duration*thrust - initial_tailbeat_duration*initial_speed)/(2*duration + initial_tailbeat_duration)
-
     def compute_costs(self):
-        """ Although the dynamics / motion equations of the maneuver have to use a single, common velocity (self.mean_water_velocity), it is useful to take into account that the
+        """ See constants.py for an explanation of EXPERIMENTAL_ENABLE_FOCAL_RETURN_BENEFIT, which offers a partial
+            simulation of the reduction in costs a fish might obtain when foraging across a velocity gradient by
+            returning to the slow water downstream of its focal point (e.g., along the bottom) early in the
+            maneuver. In practice we found this adjustment was not useful for real fish behavior, so it has been
+            disabled by default but remains in the code for possible future investigation.
+
+        Although the dynamics / motion equations of the maneuver have to use a single, common velocity (self.mean_water_velocity), it is useful to take into account that the
             fish during the final straight is swimming against water flowing at the focal velocity, which takes less energy. Fish foraging on the surface with a heavy vertical
             velocity gradient frequently go straight to the bottom after capturing prey and return to the focal point in that slower water to save energy. Although we cannot
             capture this entire dynamic, we can adjust the cost for this one segment, so the fish is moving in the same reference frame (mean_water_velocity) but paying only
@@ -457,31 +454,24 @@ class ManeuverFinalStraight(object):
         try:
             dv = self.mean_water_velocity - self.fish_focal_velocity
             # Set cost_a with adjustments if appropriate
-            if self.duration_a > 0 and dv != 0 and not SENSITIVITY_DISABLE_FOCAL_RETURN_BENEFIT:
+            if self.duration_a > 0 and dv != 0 and EXPERIMENTAL_ENABLE_FOCAL_RETURN_BENEFIT:
                 mean_speed_a = self.length_a / self.duration_a
                 self.adj_thrust_a = np.sqrt(dv ** 2 + self.true_thrust_a ** 2 - 2 * dv * mean_speed_a)
                 if np.isnan(self.adj_thrust_a): # it doesn't seem this condition is ever triggered, but handling it just in case
                     self.adj_thrust_a = self.fish_min_thrust
-                #new_adj_thrust_a = self.new_adjusted_thrust_for_cost(self.adj_thrust_a, self.initial_speed, self.duration_a)
                 self.cost_a = self.swimming_cost_rate(self.adj_thrust_a) * self.duration_a
             else:
-                #new_adj_thrust_a = self.new_adjusted_thrust_for_cost(self.thrust_a, self.initial_speed, self.duration_a)
                 self.cost_a = self.swimming_cost_rate(self.true_thrust_a) * self.duration_a
-            #self.cost_a = self.swimming_cost_rate(new_adj_thrust_a) * self.duration_a
             # Set cost_b with adjustments if appropriate
-            if self.duration_b > 0 and dv != 0 and not SENSITIVITY_DISABLE_FOCAL_RETURN_BENEFIT:
+            if self.duration_b > 0 and dv != 0 and EXPERIMENTAL_ENABLE_FOCAL_RETURN_BENEFIT:
                 mean_speed_b = self.length_b / self.duration_b
                 self.adj_thrust_b = np.sqrt(dv ** 2 + self.thrust_b ** 2 - 2 * dv * mean_speed_b)
                 if np.isnan(self.adj_thrust_b):
                     self.adj_thrust_b = self.fish_min_thrust
-                else: # todo why is this in an 'else' here but not for part a?
+                else:
                     self.cost_b = self.swimming_cost_rate(self.adj_thrust_b) * self.duration_b
-                #new_adj_thrust_b = self.new_adjusted_thrust_for_cost(self.adj_thrust_b, self.final_speed_a, self.duration_b)
             else:
                 self.cost_b = self.swimming_cost_rate(self.thrust_b) * self.duration_b
-                #new_adj_thrust_b = self.new_adjusted_thrust_for_cost(self.thrust_b, self.final_speed_a, self.duration_b)
-            #self.cost_b = self.swimming_cost_rate(new_adj_thrust_b) * self.duration_b
-
             # Combine costs
             self.cost = self.cost_a + self.cost_b
         except Exception:

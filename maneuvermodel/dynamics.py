@@ -66,7 +66,7 @@ class ManeuverDynamics(object):
         # Now that the end of turn 3 is somewhere downstream of the focal point, calculate the final straight to catch up to it
         try:
             x_p, t_p = self.penultimate_point(maneuver)
-            self.straight_3 = ManeuverFinalStraight(fish, self.v, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a, maneuver.final_duration_a_proportional, False)
+            self.straight_3 = ManeuverFinalStraight(fish, self.v, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a, False)
             if not self.straight_3.creation_succeeded:
                 maneuver.convergence_failure_code = self.straight_3.convergence_failure_code
                 self.energy_cost = CONVERGENCE_FAILURE_COST
@@ -74,9 +74,13 @@ class ManeuverDynamics(object):
                 return
         except Exception:
             print("Exception caught when creating ManeuverFinalStraight in ManeuverDynamics.__init__.")
-
         maneuver.path.update_with_straight_3_length(self.straight_3.length)
-
+        # Prevent suboptimal figure-8 maneuvers that can trap the optimization algorithm as strong local minima far from true minimum
+        if maneuver.path.turn_2_length > np.pi * maneuver.r2 and maneuver.path.turn_3_length > np.pi * maneuver.r3 and maneuver.path.turn_2_direction != maneuver.path.turn_3_direction:
+            self.energy_cost = CONVERGENCE_FAILURE_COST
+            self.total_cost = CONVERGENCE_FAILURE_COST
+            return
+        # Save final attributes
         self.wait_duration = maneuver.path.wait_length / maneuver.mean_water_velocity
         self.pursuit_duration = self.turn_1.duration + self.straight_1.duration
         self.return_duration = self.turn_2.duration + self.straight_2.duration + self.turn_3.duration + self.straight_3.duration
@@ -132,7 +136,7 @@ class ManeuverDynamics(object):
         fish_x_at_critical_point = (x_p - s_0) # critical point being the earliest point at which fish speed can match v
         focal_point_x_at_critical_point = -self.v * (t_p + t_0)
         if focal_point_x_at_critical_point > fish_x_at_critical_point:
-            amount_to_back_up = max(focal_point_x_at_critical_point - fish_x_at_critical_point, 0.01) # back up at least 0.01 cm to prevent lengthy cycling close to convergence but not quite there
+            amount_to_back_up = max(focal_point_x_at_critical_point - fish_x_at_critical_point, 0.001) # back up at least 0.01 cm to prevent lengthy cycling close to convergence but not quite there
             #print("Reeturning needs_to_back_up value", amount_to_back_up)
             return amount_to_back_up # turn 3 needs to back up and let focal point get in front
         else:
@@ -155,7 +159,7 @@ class ManeuverDynamics(object):
         straight_2 = ManeuverSegment(fish, maneuver.path.straight_2_length, turn_2.final_speed, maneuver.thrusts[3], False, 0.0, plottable)
         turn_3 = ManeuverSegment(fish, maneuver.path.turn_3_length, straight_2.final_speed, maneuver.thrusts[4], True, maneuver.path.turn_3_radius, plottable)
         x_p, t_p = self.penultimate_point(maneuver)
-        straight_3 = ManeuverFinalStraight(fish, maneuver.mean_water_velocity, t_p, x_p, turn_3.final_speed, maneuver.final_thrust_a, maneuver.final_duration_a_proportional, plottable)
+        straight_3 = ManeuverFinalStraight(fish, maneuver.mean_water_velocity, t_p, x_p, turn_3.final_speed, maneuver.final_thrust_a, plottable)
         return (turn_1, straight_1, turn_2, straight_2, turn_3, straight_3)
 
     def thrust_durations(self):

@@ -12,7 +12,7 @@ def load_real_maneuver(input_cache_fish_label, maneuver_index, use_total_cost=Fa
     cache = pickle.load(open(os.path.join(MANEUVER_INPUT_CACHE_PATH, input_cache_fish_label + ".pickle"), "rb"))
     fish = maneuveringfish.ManeuveringFish(fork_length = cache['fish']['fork_length_cm'],
                                            focal_velocity = cache['fish']['mean_focal_current_speed_cm_per_s'],
-                                           mass = cache['fish']['mass_g'],
+                                           base_mass = cache['fish']['mass_g'],
                                            temperature = cache['fish']['temperature'],
                                            SMR = cache['fish']['SMR'],
                                            max_thrust = cache['fish']['max_thrust'],
@@ -55,7 +55,8 @@ def add_to_combined_run_results(model):
     combined_run_results[model.label].append(-model.tracked_fitness)
 
 
-long_run_model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], epoch=5000, pop_size=500, se=0.5, mu=50, dims=12, tracked=True) # 2500/300
+long_run_model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], max_iterations=5000, pop_size=500,
+                                            se=0.5, mu=50, dims=12, tracked=True)  # 2500/300
 long_run_model.solve(True)
 true_best_fitness = long_run_model.solution.fitness
 
@@ -63,23 +64,27 @@ n_runs = 25
 for run_index in range(n_runs):
     print("-------------------- Run", run_index,"of",n_runs,"--------------------")
 
-    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], epoch=round(150000/325), pop_size=325, se=0.6, mu=round(150000/325), dims=12, tracked=True)
-    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.epoch, model.pop_size, model.se, model.mu)
+    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], max_iterations=round(150000 / 325),
+                                       pop_size=325, se=0.6, mu=round(150000 / 325), dims=12, tracked=True)
+    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.max_iterations, model.pop_size, model.se, model.mu)
     solution = model.solve(True)
     add_to_combined_run_results(model)
 
-    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], epoch=round(150000/325), pop_size=325, se=0.1, mu=50, dims=12, tracked=True)
-    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.epoch, model.pop_size, model.se, model.mu)
+    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], max_iterations=round(150000 / 325),
+                                       pop_size=325, se=0.1, mu=50, dims=12, tracked=True)
+    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.max_iterations, model.pop_size, model.se, model.mu)
     solution = model.solve(True)
     add_to_combined_run_results(model)
 
-    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], epoch=round(150000/325), pop_size=325, se=5, mu=50, dims=12, tracked=True)
-    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.epoch, model.pop_size, model.se, model.mu)
+    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], max_iterations=round(150000 / 325),
+                                       pop_size=325, se=5, mu=50, dims=12, tracked=True)
+    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.max_iterations, model.pop_size, model.se, model.mu)
     solution = model.solve(True)
     add_to_combined_run_results(model)
 
-    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], epoch=round(150000/100), pop_size=100, se=0.6, mu=round(150000/100), dims=12, tracked=True)
-    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.epoch, model.pop_size, model.se, model.mu)
+    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], max_iterations=round(150000 / 100),
+                                       pop_size=100, se=0.6, mu=round(150000 / 100), dims=12, tracked=True)
+    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.max_iterations, model.pop_size, model.se, model.mu)
     solution = model.solve(True)
     add_to_combined_run_results(model)
 
@@ -163,8 +168,9 @@ n_runs = 10
 for run_index in range(n_runs):
     print("-------------------- Run", run_index,"of",n_runs,"--------------------")
 
-    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], epoch=round(16000/100), pop_size=100, se=0.5, mu=50, dims=12, tracked=True)
-    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.epoch, model.pop_size, model.se, model.mu)
+    model = saro_compiled.CompiledSARO(tm['fish'], tm['pv'], tm['xd'], tm['yd'], max_iterations=round(16000 / 100),
+                                       pop_size=100, se=0.5, mu=50, dims=12, tracked=True)
+    model.label = "SARO_{0}x{1}_{2:.2f}_{3}".format(model.max_iterations, model.pop_size, model.se, model.mu)
     solution = model.solve(True)
 
 

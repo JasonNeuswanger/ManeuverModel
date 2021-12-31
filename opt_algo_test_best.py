@@ -40,9 +40,9 @@ def problem_description(verbose=True):
 def process_completion(model, plot=False):
     lowest_energy_cost = -model.solution[1][0]
     model_name = 'Unnamed' if not hasattr(model, 'name') else model.name
-    n_function_evals = model.nfe_per_epoch * model.epoch
-    run_name = "{0} epoch={1} pop_size={2} n_evals={3}".format(model_name, model.epoch, model.pop_size, n_function_evals)
-    print("{4} : Lowest energy cost was {0} J after {1} fEvals ({2}x{3}).".format(lowest_energy_cost, n_function_evals, model.epoch, model.pop_size, model_name))
+    n_function_evals = model.nfe_per_epoch * model.max_iterations
+    run_name = "{0} epoch={1} pop_size={2} n_evals={3}".format(model_name, model.max_iterations, model.pop_size, n_function_evals)
+    print("{4} : Lowest energy cost was {0} J after {1} fEvals ({2}x{3}).".format(lowest_energy_cost, n_function_evals, model.max_iterations, model.pop_size, model_name))
     if plot: # note I manually edited the code from the package that output figures in both png and pdf and changed to pdf-only
         if not os.path.exists(os.path.join(FIGURE_OUTPUT_PATH, run_name)): os.mkdir(os.path.join(FIGURE_OUTPUT_PATH, run_name))
         model.history.save_global_objectives_chart(filename=os.path.join(FIGURE_OUTPUT_PATH, run_name, "GlobalObjectives {0}".format(run_name)))
@@ -74,7 +74,7 @@ def compare_multiple_models(comparison_label="Comparison", models=()):
     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     for model in models:
         global_best = -np.array(model.history.list_global_best_fit)
-        function_evals = np.arange(0, model.nfe_per_epoch * (model.epoch+1), model.nfe_per_epoch)
+        function_evals = np.arange(0, model.nfe_per_epoch * (model.max_iterations + 1), model.nfe_per_epoch)
         plt.plot(function_evals, global_best, axes=ax, label=model.name)  # Plot some data on the (implicit) axes.
         ax.set_yscale('log')
         plt.legend()
@@ -101,7 +101,8 @@ from importlib import reload
 reload(saro_compiled)
 
 t2 = time.perf_counter()
-model_c = saro_compiled.CompiledSARO(fish, prey_velocity, xd, yd, epoch=700, pop_size=250, se=0.5, mu=50, dims=12, tracked=True)
+model_c = saro_compiled.CompiledSARO(fish, prey_velocity, xd, yd, max_iterations=700, pop_size=250, se=0.5, mu=50,
+                                     dims=12, tracked=True)
 solution = model_c.solve(True)
 print("Solution took time", time.perf_counter() - t2) # value should be -0.146, or local min at -0.153
 
@@ -264,7 +265,7 @@ combined_function_evals = {}
 def add_to_combined_run_results(model):
     if model.name not in combined_run_results.keys():
         combined_run_results[model.name] = []
-        combined_function_evals[model.name] = np.arange(0, model.nfe_per_epoch * (model.epoch + 1), model.nfe_per_epoch)
+        combined_function_evals[model.name] = np.arange(0, model.nfe_per_epoch * (model.max_iterations + 1), model.nfe_per_epoch)
     combined_run_results[model.name].append(-np.array(model.history.list_global_best_fit))
 
 n_runs = 50

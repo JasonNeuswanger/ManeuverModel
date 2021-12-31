@@ -13,7 +13,7 @@ bigfontsize = 12
 
 param_labels = ['Thrust (turn 1)', 'Thrust (straight 1)', 'Thrust (turn 2)', 'Thrust (straight 2)',
                 'Thrust (turn 3)', 'Radius (turn 1)', 'Radius (turn 2)', 'Radius (turn 3)',
-                'Thrust (straight 3A)', 'X (turn 3)', 'Duration (straight 3A)', 'Wait time']
+                'Thrust (straight 3A)', 'X (turn 3)', 'Wait time']
 
 def summarize_solution(solution, display=True, title=None, export_path=None, should_print_dynamics=True, detailed=False, add_text_panel=False, plot_dpi=132):
     if solution.dynamics.energy_cost >= CONVERGENCE_FAILURE_COST:
@@ -70,8 +70,7 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
         text += "           r2: {0:7.3f} | {1:.3f}p\n".format(solution.r2, p[6])
         text += "           r3: {0:7.3f} | {1:.3f}p\n".format(solution.r3, p[7])
         text += " final_turn_x: {0:7.3f} | {1:.3f}p\n".format(solution.final_turn_x, p[9])
-        text += "   duration_a: {0:7.3f} | {1:.3f}p\n".format(dyn.straight_3.duration_a, p[10])
-        text += "    wait time: {0:7.3f} | {1:.3f}p\n".format(solution.wait_time, p[11])
+        text += "    wait time: {0:7.3f} | {1:.3f}p\n".format(solution.wait_time, p[10])
         text += "\n"
         text += "Stage    Length   Cost       Time   EndSpd\n"
         text += "Turn 1  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.turn_1.length, dyn.turn_1.cost, dyn.turn_1.duration, dyn.turn_1.final_speed)
@@ -81,6 +80,10 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
         text += "Turn 3  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.turn_3.length, dyn.turn_3.cost, dyn.turn_3.duration, dyn.turn_3.final_speed)
         text += "Str 3A  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.straight_3.length_a, dyn.straight_3.cost_a, dyn.straight_3.duration_a, dyn.straight_3.final_speed_a)
         text += "Str 3B  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.straight_3.length_b, dyn.straight_3.cost_b, dyn.straight_3.duration_b, solution.mean_water_velocity)
+        text += "\n"
+        text += "Prey velocity: {0:5.3f}\n".format(solution.prey_velocity)
+        text += "Focal velocity: {0:5.3f}\n".format(solution.fish.focal_velocity)
+        text += "Detection point 2D: {0:5.3f}, {1:5.3f}\n".format(solution.det_x, solution.det_y)
         fig.text(0.75, 0.93, text, transform=fig.transFigure, fontsize=7, family='monospace', va='top')
     if display:
         fig.show()
@@ -339,7 +342,7 @@ def plot_swimming_costs(ax, dynamicstuple, solution, detailed):
     if detailed:
         ax.set_title('Cost ({0:.5f} J + {1:.5f} J from SMR)'.format(solution.dynamics.energy_cost, SMR * solution.dynamics.duration), fontsize=smallfontsize)
 
-def plot_parameter_sensitivity(opt, display=True, export_individual_maneuvers=False, export_path=None):
+def plot_parameter_sensitivity(opt, display=True, export_path=None):
     opt_proportions = opt.proportions()
     plt.ioff()
     fig, axes = plt.subplots(3, 4, figsize=(18, 11))
@@ -348,16 +351,18 @@ def plot_parameter_sensitivity(opt, display=True, export_individual_maneuvers=Fa
         new_proportions[index] = new_value
         return new_proportions
     for i, ax in enumerate(axes.reshape(-1)):
-        p = opt_proportions[i]
-        x = np.unique(np.clip(np.linspace(p - 0.05, p + 0.05, 301), 0, 1)) # go +/- 5 % from optimal param proportional value, but stopping at 0 or 1; always choose odd #
-        y = [-maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).fitness for x_value in x]
-        final_turn_x_adjustments = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).had_final_turn_adjusted]
-        sns.lineplot(x=x, y=y, ax=ax)
-        sns.rugplot(final_turn_x_adjustments, ax=ax)
-        ax.set_ylabel("Maneuver cost (J)")
-        ax.set_xlabel("Proportional " + param_labels[i])
-        ax.set_ylim(ymin=-0.9*opt.fitness, ymax=-2.0*opt.fitness)
-        ax.axvline(x=p, ls='dotted', color='0.0', label='Global Optimum')
+        if i < len(opt_proportions):
+            p = opt_proportions[i]
+            x = np.unique(np.clip(np.linspace(p - 0.05, p + 0.05, 301), 0, 1)) # go +/- 5 % from optimal param proportional value, but stopping at 0 or 1; always choose odd #
+            y = [-maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).fitness for x_value in x]
+            final_turn_x_adjustments = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).had_final_turn_adjusted]
+            sns.lineplot(x=x, y=y, ax=ax)
+            sns.rugplot(final_turn_x_adjustments, ax=ax)
+            ax.set_ylabel("Maneuver cost (J)")
+            ax.set_xlabel("Proportional " + param_labels[i])
+            default_ymin, default_ymax = ax.get_ylim()
+            ax.set_ylim(ymin=max(-0.9*opt.fitness, default_ymin), ymax=min(-2.0*opt.fitness, default_ymax))
+            ax.axvline(x=p, ls='dotted', color='0.0', label='Global Optimum')
     fig.suptitle("Proportional parameters (dotted line = optimum, orange ticks = had to slow down)")
     fig.tight_layout()
     if export_path is not None:
