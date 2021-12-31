@@ -54,9 +54,7 @@ def plot_averaged_results(true_best_value, comparison_label="Comparison"):
 # saved_test_maneuver_name = "2016-08-02-1 Clearwater - Arctic Grayling (id #1) Attempt 179" # also pretty good
 
 saved_test_maneuver_names = [
-"2015-06-10-1 Chena - Chinook Salmon (id #1) Attempt 91",
-"2015-06-10-1 Chena - Chinook Salmon (id #1) Attempt 142",
-"2015-08-06-1 Chena - Chinook Salmon (id #3) Attempt 98", # solutions with 60k evals trap in a local loop-de-loop min 5x higher than true cost
+"2015-08-06-1 Chena - Chinook Salmon (id #3) Attempt 98",
 "2015-07-28-1 Clearwater - Arctic Grayling (id #1) Attempt 172",
 "2015-07-31-1 Clearwater - Arctic Grayling (id #2) Attempt 45",
 "2016-08-02-1 Clearwater - Arctic Grayling (id #1) Attempt 179",

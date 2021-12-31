@@ -66,7 +66,8 @@ class ManeuverDynamics(object):
         # Now that the end of turn 3 is somewhere downstream of the focal point, calculate the final straight to catch up to it
         try:
             x_p, t_p = self.penultimate_point(maneuver)
-            self.straight_3 = ManeuverFinalStraight(fish, self.v, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a, False)
+            self.straight_3 = ManeuverFinalStraight(fish, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a,
+                                                    False)
             if not self.straight_3.creation_succeeded:
                 maneuver.convergence_failure_code = self.straight_3.convergence_failure_code
                 self.energy_cost = CONVERGENCE_FAILURE_COST
@@ -159,7 +160,7 @@ class ManeuverDynamics(object):
         straight_2 = ManeuverSegment(fish, maneuver.path.straight_2_length, turn_2.final_speed, maneuver.thrusts[3], False, 0.0, plottable)
         turn_3 = ManeuverSegment(fish, maneuver.path.turn_3_length, straight_2.final_speed, maneuver.thrusts[4], True, maneuver.path.turn_3_radius, plottable)
         x_p, t_p = self.penultimate_point(maneuver)
-        straight_3 = ManeuverFinalStraight(fish, maneuver.mean_water_velocity, t_p, x_p, turn_3.final_speed, maneuver.final_thrust_a, plottable)
+        straight_3 = ManeuverFinalStraight(fish, t_p, x_p, turn_3.final_speed, maneuver.final_thrust_a, plottable)
         return (turn_1, straight_1, turn_2, straight_2, turn_3, straight_3)
 
     def thrust_durations(self):
@@ -168,5 +169,5 @@ class ManeuverDynamics(object):
                 (self.turn_2.thrust, self.turn_2.duration),
                 (self.straight_2.thrust, self.straight_2.duration),
                 (self.turn_3.thrust, self.turn_3.duration),
-                (self.straight_3.thrust_a, self.straight_3.duration_a),
+                (self.straight_3.thrust_a_experienced, self.straight_3.duration_a),
                 (self.straight_3.thrust_b, self.straight_3.duration_b))

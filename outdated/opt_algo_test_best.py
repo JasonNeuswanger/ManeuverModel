@@ -14,7 +14,7 @@ typical = {'Chinook Salmon': {'fork_length': 4.6, 'focal_velocity': 10, 'prey_ve
            'Arctic Grayling': {'fork_length': 43, 'focal_velocity': 42, 'prey_velocity': 48, 'mass': 920, 'temperature': 6, 'max_thrust': 159, 'NREI': 0.017, 'detection_distance': 35, 'SMR': 40}}
 species = 'Dolly Varden'
 fish = maneuveringfish.ManeuveringFish(fork_length = typical[species]['fork_length'],
-                                       focal_velocity = typical[species]['focal_velocity'],
+                                       mean_water_velocity= typical[species]['focal_velocity'],
                                        mass = typical[species]['mass'],
                                        temperature = typical[species]['temperature'],
                                        SMR = typical[species]['SMR'],

@@ -4,8 +4,8 @@
 
 import math
 import numpy as np
-from .maneuver import maneuver_from_proportions
-from .constants import CONVERGENCE_FAILURE_COST
+from maneuvermodel.maneuver import maneuver_from_proportions
+from maneuvermodel.constants import CONVERGENCE_FAILURE_COST
 
 def objective_function(fish, prey_velocity, xd, yd, p):
     maneuver = maneuver_from_proportions(fish, prey_velocity, xd, yd, p)

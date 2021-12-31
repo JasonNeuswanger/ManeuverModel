@@ -29,7 +29,7 @@ MAX_FINAL_TURN_X_LENGTH_MULTIPLE = 10
 EXP_OVERFLOW_THRESHOLD = 650
 
 # Controls for the use of Newton's Method in calculating the final straight
-MAX_NEWTON_ITERATIONS = 300 # normally only takes a few, but a high limit reduces failures to converge on oddball maneuvers
+MAX_NEWTON_ITERATIONS = 300 # normally only takes a few, but a high limit reduces failures to converge on odd maneuvers
 CONVERGENCE_TOLERANCE_T_A_BOUNDS = 1e-7
 CONVERGENCE_TOLERANCE_SEGMENT_B = 1e-7
 
@@ -56,14 +56,6 @@ DEFAULT_OPT_ITERATIONS = 500
 
 SLOW_OPT_N = 300
 SLOW_OPT_ITERATIONS = 2000
-
-#---------------------------------------------------------------------------------------------------------------#
-#------------------------------------------ Experimental Features ----------------------------------------------#
-#---------------------------------------------------------------------------------------------------------------#
-
-# Switch to disable the mechanism that uses the focal velocity rather than maneuver velocity for the cost of the final straight
-# Set to True for sensitivity test, False for normal model runs.
-EXPERIMENTAL_ENABLE_FOCAL_RETURN_BENEFIT = True
 
 #---------------------------------------------------------------------------------------------------------------#
 #--------------------------------------- Sensitivity analysis to-do --------------------------------------------#

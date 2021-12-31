@@ -15,13 +15,13 @@ param_labels = ['Thrust (turn 1)', 'Thrust (straight 1)', 'Thrust (turn 2)', 'Th
                 'Thrust (turn 3)', 'Radius (turn 1)', 'Radius (turn 2)', 'Radius (turn 3)',
                 'Thrust (straight 3A)', 'X (turn 3)', 'Wait time']
 
-def summarize_solution(solution, display=True, title=None, export_path=None, should_print_dynamics=True, detailed=False, add_text_panel=False, plot_dpi=132):
+def summarize_solution(solution, display=True, title=None, export_path=None, should_print_dynamics=True, detailed=False, add_text_panel=False, plot_dpi=132, plot_base_width=7.5, plot_base_height=6.5):
     if solution.dynamics.energy_cost >= CONVERGENCE_FAILURE_COST:
         print("Cannot summarize solution in which the final straight failed to converge.")
         return
     plt.ioff()  # set interactive mode to off so the plot doesn't display until show() is called
     sns.set_style('ticks')
-    figsize = (7.5+(2.6 if add_text_panel else 0), 5.0) if detailed else (6.5+(2.6 if add_text_panel else 0), 4.75)
+    figsize = (plot_base_width+(2.6 if add_text_panel else 0), 5.0) if detailed else (plot_base_height+(2.6 if add_text_panel else 0), 4.75)
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, facecolor='w', figsize=figsize, dpi=plot_dpi)
     dynamicstuple = solution.dynamics.plottable_segments(solution)
     if should_print_dynamics: print_dynamics(dynamicstuple, solution.dynamics, solution)
@@ -64,7 +64,7 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
         text += "Turn 2 thrust: {0:7.3f} | {1:.3f}p\n".format(dyn.turn_2.u_thrust, p[2])
         text += "Strt 2 thrust: {0:7.3f} | {1:.3f}p\n".format(dyn.straight_2.u_thrust, p[3])
         text += "Turn 3 thrust: {0:7.3f} | {1:.3f}p\n".format(dyn.turn_1.u_thrust, p[4])
-        text += "Strt 3 thru_a: {0:7.3f} | {1:.3f}p\n".format(dyn.straight_3.thrust_a, p[8])
+        text += "Strt 3 thru_a: {0:7.3f} | {1:.3f}p\n".format(dyn.straight_3.thrust_a_experienced, p[8])
         text += "Strt 3 thru_b: {0:7.3f} | (n/a)\n".format(dyn.straight_3.thrust_b)
         text += "           r1: {0:7.3f} | {1:.3f}p\n".format(solution.r1, p[5])
         text += "           r2: {0:7.3f} | {1:.3f}p\n".format(solution.r2, p[6])
@@ -81,8 +81,7 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
         text += "Str 3A  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.straight_3.length_a, dyn.straight_3.cost_a, dyn.straight_3.duration_a, dyn.straight_3.final_speed_a)
         text += "Str 3B  {0:7.3f} {1:10.6f} {2:7.3f} {3:7.3f}\n".format(dyn.straight_3.length_b, dyn.straight_3.cost_b, dyn.straight_3.duration_b, solution.mean_water_velocity)
         text += "\n"
-        text += "Prey velocity: {0:5.3f}\n".format(solution.prey_velocity)
-        text += "Focal velocity: {0:5.3f}\n".format(solution.fish.focal_velocity)
+        text += "Mean water velocity: {0:5.3f}\n".format(solution.fish.mean_water_velocity)
         text += "Detection point 2D: {0:5.3f}, {1:5.3f}\n".format(solution.det_x, solution.det_y)
         fig.text(0.75, 0.93, text, transform=fig.transFigure, fontsize=7, family='monospace', va='top')
     if display:
@@ -354,8 +353,13 @@ def plot_parameter_sensitivity(opt, display=True, export_path=None):
         if i < len(opt_proportions):
             p = opt_proportions[i]
             x = np.unique(np.clip(np.linspace(p - 0.05, p + 0.05, 301), 0, 1)) # go +/- 5 % from optimal param proportional value, but stopping at 0 or 1; always choose odd #
-            y = [-maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).fitness for x_value in x]
-            final_turn_x_adjustments = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.prey_velocity, opt.det_x, opt.det_y, replace_element(opt_proportions, i, x_value)).had_final_turn_adjusted]
+            y = [-maneuver_from_proportions(opt.fish, opt.det_x, opt.det_y,
+                                            replace_element(opt_proportions, i, x_value)).fitness for x_value in x]
+            final_turn_x_adjustments = [x_value for x_value in x if maneuver_from_proportions(opt.fish, opt.det_x,
+                                                                                              opt.det_y,
+                                                                                              replace_element(
+                                                                                                  opt_proportions, i,
+                                                                                                  x_value)).had_final_turn_adjusted]
             sns.lineplot(x=x, y=y, ax=ax)
             sns.rugplot(final_turn_x_adjustments, ax=ax)
             ax.set_ylabel("Maneuver cost (J)")
@@ -384,7 +388,7 @@ def print_dynamics(dynamicstuple, dynamics, solution):
     print_segment_dynamics('return turn', turn_2)
     print_segment_dynamics('return straight', straight_2)
     print_segment_dynamics('final turn', turn_3)
-    print("Dynamics of segment {0:17s} of length {1:6.2f}: duration_a={2:5.3f}, duration_b={3:5.3f}, thrusts=({5:6.2f}, {6:6.2f}), cost: {4:11.7f}.".format('final straight', straight_3.length, straight_3.duration_a, straight_3.duration_b, straight_3.cost, straight_3.thrust_a, straight_3.thrust_b))
+    print("Dynamics of segment {0:17s} of length {1:6.2f}: duration_a={2:5.3f}, duration_b={3:5.3f}, thrusts=({5:6.2f}, {6:6.2f}), cost: {4:11.7f}.".format('final straight', straight_3.length, straight_3.duration_a, straight_3.duration_b, straight_3.cost, straight_3.thrust_a_experienced, straight_3.thrust_b))
     print("----------------------------------------------------------------------")
     energy_cost_with_SMR = solution.fish.maneuver_energy_cost_including_SMR(solution)
     total_cost_with_SMR = solution.fish.maneuver_energy_cost_including_SMR(solution) + dynamics.opportunity_cost

@@ -13,7 +13,7 @@ def optimal_maneuver_from_saved_setup(saved_setup_file, **kwargs):
         loaded = json.load(f)
 
     fish = ManeuveringFish(kwargs.get('fork_length', loaded['fish_fork_length']),
-                           kwargs.get('focal_velocity', loaded['fish_focal_velocity']),
+                           kwargs.get('mean_water_velocity', loaded['mean_water_velocity']),
                            kwargs.get('base_mass', loaded['fish_base_mass']),
                            kwargs.get('temperature', loaded['fish_temperature']),
                            kwargs.get('SMR', loaded['fish_SMR']),
@@ -23,7 +23,6 @@ def optimal_maneuver_from_saved_setup(saved_setup_file, **kwargs):
                            kwargs.get('disable_wait_time', loaded['fish_disable_wait_time'])
                            )
     return optimal_maneuver(fish,
-                            prey_velocity=kwargs.get('prey_velocity', loaded['prey_velocity']),
                             n=kwargs.get('n', DEFAULT_OPT_N),
                             max_iterations=kwargs.get('max_iterations', DEFAULT_OPT_ITERATIONS),
                             detection_point_3D=kwargs.get('detection_point_3D', (loaded['det_x'], loaded['det_y'], 0)),
@@ -35,11 +34,10 @@ def save_setup_inputs(maneuver, destination):
     """ Saves the inputs specifying the maneuver setup (velocity, detection position, etc), not the
         specific attributes (radius, thrusts, etc) of the particular maneuver object passed.
         'destination' should specify a json file """
-    inputs = {'prey_velocity': maneuver.prey_velocity,
-              'det_x': maneuver.det_x,
+    inputs = {'det_x': maneuver.det_x,
               'det_y': maneuver.det_y,
+              'mean_water_velocity': maneuver.fish.mean_water_velocity,
               'fish_fork_length': maneuver.fish.fork_length,
-              'fish_focal_velocity': maneuver.fish.focal_velocity,
               'fish_temperature': maneuver.fish.temperature,
               'fish_base_mass': maneuver.fish.base_mass,
               'fish_SMR': maneuver.fish.SMR,

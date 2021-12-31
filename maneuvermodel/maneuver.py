@@ -39,7 +39,6 @@ def value_from_proportion(p, min_value, max_value):
 
 maneuver_spec = [
     ('fish', fish_type),
-    ('prey_velocity', float64),
     ('mean_water_velocity', float64),
     ('r1', float64),
     ('r2', float64),
@@ -77,10 +76,9 @@ maneuver_spec = [
 @jitclass(maneuver_spec)
 class Maneuver(object):
     
-    def __init__(self, fish, prey_velocity, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, det_x, det_y, ftap):
+    def __init__(self, fish, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, det_x, det_y, ftap):
         self.fish = fish
-        self.prey_velocity = prey_velocity
-        self.mean_water_velocity = (prey_velocity + fish.focal_velocity) / 2.0
+        self.mean_water_velocity = fish.mean_water_velocity
         self.r1 = r1
         self.r2 = r2
         self.r3_proportional = r3_proportional
@@ -102,7 +100,6 @@ class Maneuver(object):
 
     def print_inputs(self):
         print("INPUTS BELOW: ")
-        print("Prey velocity: ", self.prey_velocity)
         print("r1, r2, r3_proportional: ", self.r1, ", ", self.r2, ", ", self.r3_proportional)
         print("final_turn_x: ", self.final_turn_x)
         print("pthrusts: ")
@@ -205,21 +202,20 @@ class Maneuver(object):
     
 maneuver_type = Maneuver.class_type.instance_type
 
-@jit(maneuver_type(fish_type, float64, float64, float64, float64[:]), nopython=True)
-def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
+@jit(maneuver_type(fish_type, float64, float64, float64[:]), nopython=True)
+def maneuver_from_proportions(fish, xd, yd, p):
     """ Create a valid solution from just a numpy vector p of [0, 1) of values in proportion to their allowed range. Allowing the solutions being
     explored when optimizing a maneuver to be expressed as proportions allows for easier testing of different optimization algorithms. """
-    mean_velocity = (prey_velocity + fish.focal_velocity) / 2
     # Set wait time within bounds, if setting it at all
     if not (fish.disable_wait_time or xd > 0): # make this the last element of the solution vector, absent if not needed
         max_x_for_wait = 0.0 if yd > 2 * fish.min_turn_radius else -np.sqrt(2*fish.min_turn_radius*yd - yd**2)
-        max_wait_time = (max_x_for_wait - xd) / mean_velocity if xd < max_x_for_wait else 0
+        max_wait_time = (max_x_for_wait - xd) / fish.mean_water_velocity if xd < max_x_for_wait else 0
         wait_time = value_from_proportion(p[10], 0, max_wait_time)
     else:
         wait_time = 0
     # Set the capture point, given the wait time
     yc = yd
-    xc = xd + mean_velocity * wait_time
+    xc = xd + fish.mean_water_velocity * wait_time
     # Set all the proportional thrusts
     pthrusts = p[:5]
     # Set turn radii
@@ -234,17 +230,17 @@ def maneuver_from_proportions(fish, prey_velocity, xd, yd, p):
     # min_final_turn_x = xc - 2 * (r2 + r3 + 2 * fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
     final_turn_x = value_from_proportion(p[9], xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length)
     # Creation solution object and return
-    return Maneuver(fish, prey_velocity, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a)
+    return Maneuver(fish, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a)
 
-@jit(maneuver_type(fish_type, float64, float64, float64), nopython=True)
-def random_maneuver(fish, prey_velocity, xd, yd):
+@jit(maneuver_type(fish_type, float64, float64), nopython=True)
+def random_maneuver(fish, xd, yd):
     p = np.random.rand(11)
-    return maneuver_from_proportions(fish, prey_velocity, xd, yd, p)
+    return maneuver_from_proportions(fish, xd, yd, p)
     
-@jit(maneuver_type(fish_type, float64, float64, float64), nopython=True)
-def convergent_random_maneuver(fish, prey_velocity, xd, yd): # quick helper to get a random solution that converges
+@jit(maneuver_type(fish_type, float64, float64), nopython=True)
+def convergent_random_maneuver(fish, xd, yd): # quick helper to get a random solution that converges
     maneuver_converged = False
     while not maneuver_converged:
-        maneuver = random_maneuver(fish, prey_velocity, xd, yd)
+        maneuver = random_maneuver(fish, xd, yd)
         maneuver_converged = maneuver.dynamics.energy_cost < CONVERGENCE_FAILURE_COST
     return maneuver

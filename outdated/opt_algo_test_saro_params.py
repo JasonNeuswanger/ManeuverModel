@@ -11,7 +11,7 @@ FIGURE_OUTPUT_PATH = "/Users/Jason/Dropbox/drift model project/Papers/Capture Ma
 def load_real_maneuver(input_cache_fish_label, maneuver_index, use_total_cost=False, disable_wait_time=True):
     cache = pickle.load(open(os.path.join(MANEUVER_INPUT_CACHE_PATH, input_cache_fish_label + ".pickle"), "rb"))
     fish = maneuveringfish.ManeuveringFish(fork_length = cache['fish']['fork_length_cm'],
-                                           focal_velocity = cache['fish']['mean_focal_current_speed_cm_per_s'],
+                                           mean_water_velocity= cache['fish']['mean_focal_current_speed_cm_per_s'],
                                            base_mass = cache['fish']['mass_g'],
                                            temperature = cache['fish']['temperature'],
                                            SMR = cache['fish']['SMR'],

@@ -47,7 +47,7 @@ def swimming_activity_cost(mass, speed, u_crit):
 maneuvering_fish_spec = [
     ('fork_length', float64),
     ('total_length', float64),
-    ('focal_velocity', float64),
+    ('mean_water_velocity', float64),
     ('rho', float64),
     ('waterlambda', float64),
     ('temperature', float64),
@@ -75,10 +75,10 @@ maneuvering_fish_spec = [
 @jitclass(maneuvering_fish_spec)
 class ManeuveringFish(object):
     
-    def __init__(self, fork_length, focal_velocity, base_mass, temperature, SMR, max_thrust, NREI, use_total_cost, disable_wait_time): # can't use **kwargs in a jitclass
+    def __init__(self, fork_length, mean_water_velocity, base_mass, temperature, SMR, max_thrust, NREI, use_total_cost, disable_wait_time): # can't use **kwargs in a jitclass
         # Note: Pass in mass and SMR of 0 to use the respective defaults for each
         self.fork_length = fork_length                     # fork length in cm
-        self.focal_velocity = focal_velocity               # focal point water velocity in cm/s -- used to compute main maneuver speed and costs at focal point
+        self.mean_water_velocity = mean_water_velocity     # focal point water velocity in cm/s -- used to compute main maneuver speed and costs at focal point
         self.temperature = temperature                     # temperature in degrees C, only used for optional post-processing analysis (dependent on SMR)
         self.rho = 1.0                                     # density of water = 1 g/cm^3
         self.waterlambda = 0.2                             # factor by which effective mass increases due to entrained water
@@ -106,7 +106,7 @@ class ManeuveringFish(object):
         oq = 14.05834 # oxycaloric equivalent in units (J/mgO2), swimming_activity_cost() for details
         self.SMR = self.sockeye_SMR() if SMR == 0 else SMR # Takes SMR input in mgO2/kg/hour, or else calculated using sockeye salmon as the default
         self.SMR_J_per_s = self.SMR * (1/3600.0) * (self.base_mass/1000.0) * oq
-        self.focal_swimming_cost_of_locomotion = swimming_activity_cost(self.base_mass, focal_velocity, self.u_crit)
+        self.focal_swimming_cost_of_locomotion = swimming_activity_cost(self.base_mass, mean_water_velocity, self.u_crit)
         self.focal_swimming_cost_including_SMR = self.SMR_J_per_s + self.focal_swimming_cost_of_locomotion
         self.coasting_cost_including_SMR = self.SMR_J_per_s
         self.u_crit = 36.23 * self.fork_length**0.19         # Grayling relationship from Jones et al 1974, via Hughes & Dill 1990

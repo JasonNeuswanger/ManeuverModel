@@ -3,21 +3,19 @@
 # Operates on numpy solution vectors scaled from 0 to 1
 
 import math
+import time
 import numpy as np
-from .maneuver import maneuver_from_proportions
-from .constants import CONVERGENCE_FAILURE_COST
+from maneuvermodel.maneuver import maneuver_from_proportions
+from maneuvermodel.constants import CONVERGENCE_FAILURE_COST
 
 def objective_function(fish, prey_velocity, xd, yd, p):
     maneuver = maneuver_from_proportions(fish, prey_velocity, xd, yd, p)
     return -maneuver.fitness
 
-def global_random_walk(nests, best, n, iteration_proportion, fitness_proportion):
+def global_random_walk(nests, best, n):
     """ This function returns an entire set of nests consisting of Levy flight perturbations of the old nests. """
     temp_nests = np.array(nests) # np.empty(nests.shape)
-    theta = 0.8
-    beta_min = 1 # should be toward the low end of the range from 1 to 2
-    # t = current iter, m = max iters, fmin = current optimal fitness, fmax = initial optimal fitness
-    beta = beta_min + theta * (1 - iteration_proportion) + (1 - theta) * fitness_proportion # final beta in interval [1,2]
+    beta = 3/2
     sigma = (math.gamma(1+beta)*math.sin(math.pi*beta/2)/(math.gamma((1+beta)/2)*beta*2**((beta-1)/2)))**(1/beta)
     for j in range(n):
         s = nests[j, :]
@@ -27,7 +25,8 @@ def global_random_walk(nests, best, n, iteration_proportion, fitness_proportion)
         step = u/abs(v)**(1/beta)
         stepsize = 0.01*(step*(s-best)) # step size is based on distance between this solution and the best one
         s += stepsize*np.random.randn(dim)
-        temp_nests[j,:] = np.clip(s, 0, 1)
+        np.clip(s, 0, 1, out=s)
+        temp_nests[j,:] = s
     return temp_nests
 
 def pairwise_best_nests(old_nests, new_nests, old_fitnesses, n, fish, prey_velocity, xd, yd):
@@ -37,7 +36,7 @@ def pairwise_best_nests(old_nests, new_nests, old_fitnesses, n, fish, prey_veloc
         a set of nests with the best one out of each pairwise comparison."""
     temp_nests = np.copy(old_nests)
     for j in range(n):
-        new_nests[j, :] = np.clip(new_nests[j, :], 0, 1)
+        np.clip(new_nests[j, :], 0, 1, out=new_nests[j, :])
         fnew = objective_function(fish, prey_velocity, xd, yd, new_nests[j, :])
         if fnew <= old_fitnesses[j]:
            old_fitnesses[j] = fnew
@@ -74,10 +73,9 @@ def CuckooSearch(fish, xd, yd, **kwargs):
     fitnesses = np.full(n, np.inf)     # Initialize fitness vector with bad fitnesses
 
     fmin, best_nest, nests, fitnesses = pairwise_best_nests(nests, new_nests, fitnesses, n, fish, prey_velocity, xd, yd)        # Calculating initial fitnesses, using comparison function for convenience
-    initial_best_fitness = max(fitnesses)
 
-    for i in range(iterations):                                                                                                 # Begin main search loop
-        new_nests = global_random_walk(nests, best_nest, n, i/iterations, fmin/initial_best_fitness)                                                                     # Generate new solutions (but keep the current best)
+    for _ in range(iterations):                                                                                                 # Begin main search loop
+        new_nests = global_random_walk(nests, best_nest, n)                                                                     # Generate new solutions (but keep the current best)
         fnew, best, nests, fitnesses = pairwise_best_nests(nests, new_nests, fitnesses, n, fish, prey_velocity, xd, yd)         # Compare solutions pairwise vs levy perturbations and keep best of each pair
         new_nests = local_random_walk(new_nests, pa, n, dim)                                                                    # Create new solutions based on differences between current ones
         fnew, best, nests, fitnesses = pairwise_best_nests(nests, new_nests, fitnesses, n, fish, prey_velocity, xd, yd)         # Evaluate those pairing-based new solutions and find the best
@@ -85,29 +83,30 @@ def CuckooSearch(fish, xd, yd, **kwargs):
             fmin = fnew
             best_nest = best
 
-    return maneuver_from_proportions(fish, prey_velocity, xd, yd, best_nest)
+    result = maneuver_from_proportions(fish, prey_velocity, xd, yd, best_nest)
+    result.objective_function_evaluations = n * (2 * iterations + 1)
+    return result
 
-def optimal_maneuver_CS(fish, **kwargs):
-    '''The 'use_total_cost' parameter should be either False to optimize for the pure energetic cost of the maneuvering or True to incorporate 
-        the opportunity cost of not searching during the two pursuit segments, given an assumed NREI.'''
-    fish.fEvals = 0
-    d3D = kwargs.get('detection_point_3D', (-1 * fish.fork_length, 0.5*fish.fork_length, 0.5*fish.fork_length)) # default detection point given if not specified
-    y3D, z3D = d3D[1:3]
+def optimal_maneuver_CS(fish, detection_point_3D, **kwargs):
+    start_time = time.perf_counter()
+    y3D, z3D = detection_point_3D[1:3]
     R = np.sqrt(y3D**2 + z3D**2)
     matrix_2Dfrom3D = np.array([[1,0,0],[0,y3D/R,z3D/R],[0,-z3D/R,y3D/R]]) # matrix to rotate the 3-D detection point about the x-axis into the x-y plane
     matrix_3Dfrom2D = matrix_2Dfrom3D.T                                    # because the inverse of this matrix is also its transpose
-    (xd, yd) = matrix_2Dfrom3D.dot(np.array(d3D))[0:2]      # 2-D detection point to use for the model, not yet sign-adjusted
+    (xd, yd) = matrix_2Dfrom3D.dot(np.array(detection_point_3D))[0:2]      # 2-D detection point to use for the model, not yet sign-adjusted
     ysign = np.sign(yd)
     yd *= ysign # Because of symmetry, we do maneuver calculations in the positive-y side of the x-y plane, saving the sign to convert back at the end
     fittest_maneuver = CuckooSearch(fish, xd, yd, **kwargs)
     fittest_maneuver.matrix_3Dfrom2D = np.ascontiguousarray(matrix_3Dfrom2D) # Set attributes to allow the fittest solution to convert; the contiguous array typing prevents a silly warning about Numba execution speed in np.dot in maneuver.to_3D
     fittest_maneuver.ysign = ysign                     # results back into 3-D
+    end_time = time.perf_counter()
+    time_cost_s = end_time - start_time
     fittest_maneuver.calculate_summary_metrics() # calculate final summary quantities like average metabolic rate that are only needed for the optimal solution, not to evaluate fitness while finding it
     label = kwargs.get('label', "")
-    iterations = kwargs.get("iterations")
+    iterations = kwargs.get("iterations", 1000)
     if not kwargs.get('suppress_output', False):
         if fittest_maneuver.energy_cost != CONVERGENCE_FAILURE_COST:
-            print("Lowest energy cost after {0} CS iterations ({7:8d} evaluations) was {1:10.6f} joules. Mean speed {2:4.1f} cm/s, {3:5.2f} bodylengths/s. Metabolic rate {4:7.1f} mg O2/kg/hr ({5:4.1f}X SMR). {6}".format(iterations, fittest_maneuver.energy_cost, fittest_maneuver.mean_swimming_speed, fittest_maneuver.mean_swimming_speed_bodylengths, fittest_maneuver.mean_metabolic_rate, fittest_maneuver.mean_metabolic_rate_SMRs,label, fish.fEvals))
+            print("Lowest energy cost after {0} CS iterations ({7:8d} evaluations, {8:5.1f} s) was {1:10.6f} joules. Mean speed {2:4.1f} cm/s, {3:5.2f} bodylengths/s. Metabolic rate {4:7.1f} mg O2/kg/hr ({5:4.1f}X SMR). {6}".format(iterations, fittest_maneuver.energy_cost, fittest_maneuver.mean_swimming_speed, fittest_maneuver.mean_swimming_speed_bodylengths, fittest_maneuver.mean_metabolic_rate, fittest_maneuver.mean_metabolic_rate_SMRs,label, fittest_maneuver.objective_function_evaluations, time_cost_s))
             if fittest_maneuver.dynamics.bad_thrust_b_penalty > 0:
                 print("The best maneuver included a penalty for a bad thrust in stage b of the final straight, penalty factor {0:.3f}.".format(fittest_maneuver.dynamics.bad_thrust_b_penalty))
             if fittest_maneuver.dynamics.violates_acceleration_limit_penalty > 0:

@@ -15,15 +15,14 @@ from maneuvermodel.constants import DEFAULT_OPT_N, DEFAULT_OPT_ITERATIONS
 #                                                                                                   #
 # ---------------------------------------------------------------------------------------------------#
 
-typical = {'Chinook Salmon': {'fork_length': 4.6, 'focal_velocity': 10, 'prey_velocity': 11, 'mass': 0.85, 'temperature': 9, 'max_thrust': 62, 'NREI': 0.017, 'detection_distance': 8, 'SMR': 226},
-           'Dolly Varden': {'fork_length': 18, 'focal_velocity': 28, 'prey_velocity': 29, 'mass': 51, 'temperature': 10, 'max_thrust': 94, 'NREI': 0.017, 'detection_distance': 17, 'SMR': 52},
-           'Arctic Grayling': {'fork_length': 43, 'focal_velocity': 42, 'prey_velocity': 48, 'mass': 920, 'temperature': 6, 'max_thrust': 159, 'NREI': 0.017, 'detection_distance': 35, 'SMR': 40}
+typical = {'Chinook Salmon': {'fork_length': 4.6, 'mean_water_velocity':10, 'mass': 0.85, 'temperature': 9, 'max_thrust': 62, 'NREI': 0.017, 'detection_distance': 8, 'SMR': 226},
+           'Dolly Varden': {'fork_length': 18, 'mean_water_velocity': 28, 'mass': 51, 'temperature': 10, 'max_thrust': 94, 'NREI': 0.017, 'detection_distance': 17, 'SMR': 52},
+           'Arctic Grayling': {'fork_length': 43, 'mean_water_velocity': 45, 'mass': 920, 'temperature': 6, 'max_thrust': 159, 'NREI': 0.017, 'detection_distance': 35, 'SMR': 40}
            }
-
 
 def create_typical_fish(species, **kwargs):  # typical fish
     return maneuveringfish.ManeuveringFish(fork_length=typical[species]['fork_length'],
-                                           focal_velocity=kwargs.get('focal_velocity', typical[species]['focal_velocity']),
+                                           mean_water_velocity=kwargs.get('mean_water_velocity', typical[species]['mean_water_velocity']),
                                            base_mass=typical[species]['mass'],
                                            temperature=typical[species]['temperature'],
                                            SMR=typical[species]['SMR'],
@@ -41,18 +40,15 @@ def typical_maneuver(species, **kwargs):
     fish = kwargs.get('modified_fish', typical_fish[species])
     default_detection_point_3D = (-typical[species]['detection_distance'] / 1.414, typical[species]['detection_distance'] / 1.414, 0.0)
     detection_point_3D = kwargs.get('modified_detection_point_3D', default_detection_point_3D)
-    prey_velocity = typical[species]['prey_velocity']
-    return optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, **kwargs)
+    return optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D, **kwargs)
 
 species = 'Dolly Varden'
 test_fish = create_typical_fish('Dolly Varden', use_total_cost=False)
 detection_point_3D = (-typical[species]['detection_distance'] / 1.414, typical[species]['detection_distance'] / 1.414, 0.0)
-prey_velocity = typical[species]['prey_velocity']
-# opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D, prey_velocity=prey_velocity)
-opt, opt_model = optimize.optimal_maneuver(test_fish, n=DEFAULT_OPT_N, max_iterations=DEFAULT_OPT_ITERATIONS, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity, tracked=True, return_optimization_model=True)
+# opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D)
+opt, opt_model = optimize.optimal_maneuver(test_fish, n=DEFAULT_OPT_N, max_iterations=DEFAULT_OPT_ITERATIONS, detection_point_3D=detection_point_3D, tracked=True, return_optimization_model=True)
 
 # best solution is 0.159198
-
 
 visualize.summarize_solution(opt, display = True, title = 'Typical Dolly', export_path = None, detailed=True, add_text_panel=True)
 
@@ -70,82 +66,6 @@ print(opt_model.tracked_best_had_final_turn_adjusted)
 from collections import Counter
 print("Convergence failure codes and frequencies:", Counter(opt_model.tracked_convergence_failure_codes.split('_')[1:]).most_common())
 
-
-
-# ---------------------------------------------------------------------------------------------------#
-#                                                                                                   #
-#                TESTING ACTUAL SIZE OF EFFECT OF MEAN VS SEPARATE VELOCITIES                       #
-#                                                                                                   #
-# Rather than testing on all my measured maneuvers (cumbersome), I arrange a separate test with
-# randomly selected values from realistic ranges.
-# ---------------------------------------------------------------------------------------------------#
-
-from maneuvermodel import maneuver, segment, maneuveringfish, optimize_cuckoo, visualize, dynamics
-import numpy as np
-import matplotlib.pyplot as plt
-
-chinook_vals = {'species': 'Chinook', 'length_range': (3.2, 6.4), 'velocity_range': (4, 22), 'reaction_distance_mean': 8.2}
-dolly_vals = {'species': 'Dollies', 'length_range': (11.2, 23.1), 'velocity_range': (14, 39), 'reaction_distance_mean': 17.6}
-grayling_vals = {'species': 'Grayling', 'length_range': (32.2, 51.4), 'velocity_range': (21, 76), 'reaction_distance_mean': 36.7}
-
-NUM_RANDOM_TESTS = 100
-
-def test_velocity_handling_method(fish_vals):
-    print("Testing velocity handling method for ", fish_vals['species'])
-    energy_differences = []
-    pursuit_differences = []
-    for i in range(NUM_RANDOM_TESTS):
-        print("Running test ", i, " of ", NUM_RANDOM_TESTS)
-        detection_point_3D = (np.sign(np.random.random() - 0.25) * np.random.exponential(fish_vals['reaction_distance_mean']), np.random.exponential(fish_vals['reaction_distance_mean']), 0)
-        fork_length = np.random.uniform(fish_vals['length_range'][0], fish_vals['length_range'][1])
-        velocity_1 = np.random.uniform(fish_vals['velocity_range'][0], fish_vals['velocity_range'][1])
-        velocity_2 = np.random.uniform(fish_vals['velocity_range'][0], fish_vals['velocity_range'][1])
-        focal_velocity = min(velocity_1, velocity_2)
-        prey_velocity = max(velocity_1, velocity_2)
-        mean_velocity = (focal_velocity + prey_velocity) / 2
-        fish_normal = maneuveringfish.ManeuveringFish(fork_length=fork_length,
-                                                      focal_velocity=focal_velocity,
-                                                      base_mass=0.0,
-                                                      temperature=10,
-                                                      SMR=0.0,
-                                                      max_thrust=2.4 * fork_length + 40,
-                                                      NREI=0.0,
-                                                      use_total_cost=False,
-                                                      disable_wait_time=True)
-        sol_normal = optimize.optimal_maneuver(fish_normal, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity)
-        fish_onevelocity = maneuveringfish.ManeuveringFish(fork_length=fork_length,
-                                                           focal_velocity=mean_velocity,
-                                                           base_mass=0.0,
-                                                           temperature=10,
-                                                           SMR=0.0,
-                                                           max_thrust=2.4 * fork_length + 40,
-                                                           NREI=0.0,
-                                                           use_total_cost=False,
-                                                           disable_wait_time=True)
-        sol_onevelocity = optimize.optimal_maneuver(fish_onevelocity, detection_point_3D=detection_point_3D, prey_velocity=mean_velocity)
-        energy_differences.append((sol_onevelocity.energy_cost - sol_normal.energy_cost) / sol_normal.energy_cost)
-        pursuit_differences.append((sol_onevelocity.pursuit_duration - sol_normal.pursuit_duration) / sol_normal.pursuit_duration)
-    plt.clf()
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    ax1.hist(energy_differences)
-    ax1.set_xlabel("Proportional energy differences")
-    ax2.hist(pursuit_differences)
-    ax2.set_xlabel("Proportional pursuit differences")
-    plt.suptitle(fish_vals['species'] + "\nvalues > 0 mean onevelocity model costs more than split fish/focal v model")
-    plt.tight_layout()
-    plt.savefig("/Users/Jason/Desktop/velocity_handling_method_differences_{0}.png".format(fish_vals['species']))
-    plt.close()
-
-plt.ioff()
-for fish_vals in (chinook_vals, dolly_vals, grayling_vals):
-    test_velocity_handling_method(fish_vals)
-plt.ion()
-
-
-# Results from this analysis
-# Theres often a 5-20 % reduction in energy cost (more for bigger fish) when using the model that allows lower costs in
-# the return straight. This pretty well justifies using both velocities despite the complexity it entails.
-
 # ---------------------------------------------------------------------------------------------------#
 #                                                                                                   #
 #                                        TESTING VS A PAPER                                         #
@@ -162,8 +82,7 @@ def check_johansen_et_al(display=False, suppress_output=False):
     # depth of the tube being 25 x 26 cm, we might assume the average detected prey's lateral distance was around 15 cm or
     # so, and I'll assume prey were detected fairly early (say 30 cm upstream) on average.
     fork_length = 33
-    focal_velocity = 68
-    prey_velocity = 68
+    mean_water_velocity = 68
     xd = -30
     yd = 15
     max_thrust = 2.4 * fork_length + 40
@@ -173,9 +92,9 @@ def check_johansen_et_al(display=False, suppress_output=False):
     temperature = 15  # only for SMR
     use_total_cost = False
     disable_wait_time = False
-    fish = maneuveringfish.ManeuveringFish(fork_length, focal_velocity, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
+    fish = maneuveringfish.ManeuveringFish(fork_length, mean_water_velocity, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
     detection_point_3D = (xd, yd, 0.0)
-    maneuver = optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity)
+    maneuver = optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D)
     visualize.summarize_solution(maneuver, display=display, title='Cost Table Check', export_path=None, detailed=True)
     joulesPerMgO2 = 3.36 * 4.184
     costMgO2 = maneuver.energy_cost / joulesPerMgO2
@@ -200,7 +119,7 @@ test_maneuver, test_fish = check_johansen_et_al(display=True)
 
 
 
-def check_cost_table_value(fork_length, focal_velocity, prey_velocity, xd, yd, display=False, suppress_output=False):
+def check_cost_table_value(fork_length, mean_water_velocity, xd, yd, display=False, suppress_output=False):
     max_thrust = 2.4 * fork_length + 40
     fish_mass = 0.0  # this input defaults the model to a rainbow trout length-mass regression
     fish_SMR = 0.0  # unused in this case
@@ -208,9 +127,9 @@ def check_cost_table_value(fork_length, focal_velocity, prey_velocity, xd, yd, d
     temperature = 10  # also unused in this case
     use_total_cost = False
     disable_wait_time = False
-    fish = maneuveringfish.ManeuveringFish(fork_length, focal_velocity, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
+    fish = maneuveringfish.ManeuveringFish(fork_length, mean_water_velocity, fish_mass, temperature, fish_SMR, max_thrust, fish_NREI, use_total_cost, disable_wait_time)
     detection_point_3D = (xd, yd, 0.0)
-    maneuver = optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D, prey_velocity=prey_velocity)
+    maneuver = optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D)
     # visualize.summarize_solution(maneuver, display=display, title='Cost Table Check', export_path=None, detailed=True)
     return maneuver
 
@@ -224,8 +143,8 @@ man = check_cost_table_value(3, 7, 40, -0.1, 0.7, display=True, suppress_output=
 # This comes out to 5.7 mgO2/kg = 0.00684 mgO2 for a 1.2 g fish = 0.0927 J per maneuver.
 # It seems there's no way to get the fish to swim anywhere near that fast to catch the prey at their treatment velocity of 4.5 cm/s: the fish just wasn't maneuvering optimally, but
 # burning energy in a suboptimal burst for kicks. Trying a higher water velocity to better approximate their swimming speed and corresponding cost.
-pdFish = maneuveringfish.ManeuveringFish(fork_length = 4.9, focal_velocity = 30, base_mass = 1.2, temperature = 15.0, SMR = 0, max_thrust = 250, NREI = 2.0, use_total_cost = False, disable_wait_time = True)
-fittest_solution = optimize.optimal_maneuver(pdFish, detection_point_3D=(-1, 3, 0), prey_velocity=30)
+pdFish = maneuveringfish.ManeuveringFish(fork_length = 4.9, mean_water_velocity= 30, base_mass = 1.2, temperature = 15.0, SMR = 0, max_thrust = 250, NREI = 2.0, use_total_cost = False, disable_wait_time = True)
+fittest_solution = optimize.optimal_maneuver(pdFish, detection_point_3D=(-1, 3, 0))
 print(""""\n Total path length: {0}\n
           Duration: {1}\n
   Pursuit duration: {2}\n

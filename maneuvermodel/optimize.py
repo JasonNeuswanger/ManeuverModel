@@ -7,15 +7,16 @@ from .constants import CONVERGENCE_FAILURE_COST, DEFAULT_OPT_N, DEFAULT_OPT_ITER
 from .visualize import param_labels, summarize_solution, plot_parameter_sensitivity
 import os
 
-def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Unnamed", export_path=None, display=True, max_iterations=DEFAULT_OPT_ITERATIONS, n=DEFAULT_OPT_N, global_iterations=SLOW_OPT_ITERATIONS, global_n=SLOW_OPT_N, n_tests=10):
+def run_convergence_test(fish, detection_point_3D, label="Unnamed", export_path=None, display=True,
+                         max_iterations=DEFAULT_OPT_ITERATIONS, n=DEFAULT_OPT_N, global_iterations=SLOW_OPT_ITERATIONS,
+                         global_n=SLOW_OPT_N, n_tests=10):
     """ This is a wrapper for optimal_maneuver which runs it multiple times, once slowly with over-the-top resources
         to hopefully determine the global optimum for reference, and then n_tests times with more common run settings
         to see how well the algorithm converges under those conditions."""
     if export_path is not None:
         assert os.path.isdir(export_path), "Export path for run_convergence_test must be a valid directory."
-    prey_velocity_passed = fish.focal_velocity if prey_velocity is None else prey_velocity
     print("Calculating global optimum...")
-    global_opt, global_opt_model = optimal_maneuver(fish, detection_point_3D, prey_velocity=prey_velocity_passed, max_iterations=global_iterations, n=global_n, tracked=True, return_optimization_model=True)
+    global_opt, global_opt_model = optimal_maneuver(fish, detection_point_3D, max_iterations=global_iterations, n=global_n, tracked=True, return_optimization_model=True)
     print("Calculating replicates...")
     plt.ioff()
     fig, ((ax, ax2),(ax3,ax4)) = plt.subplots(2, 2, figsize=(16, 11))
@@ -25,7 +26,7 @@ def run_convergence_test(fish, detection_point_3D, prey_velocity=None, label="Un
     ax4.axhline(y=global_opt.capture_x, ls='dotted', color='0.7', label='Global Optimum')
     stored_opts = []
     for _ in range(n_tests):
-        opt, opt_model = optimal_maneuver(fish, detection_point_3D, prey_velocity=prey_velocity_passed, max_iterations=max_iterations, n=n, tracked=True, return_optimization_model=True)
+        opt, opt_model = optimal_maneuver(fish, detection_point_3D, max_iterations=max_iterations, n=n, tracked=True, return_optimization_model=True)
         stored_opts.append(opt)
         ax.plot(opt_model.tracked_nfe, opt_model.tracked_energy_cost, label="{0:7.6f} x Glob Opt".format(opt.energy_cost / global_opt.energy_cost))
         ax3.plot(opt_model.tracked_nfe, opt_model.tracked_pursuit_duration, label="{0:7.6f} x Glob Opt".format(opt.pursuit_duration / global_opt.pursuit_duration))
@@ -74,13 +75,12 @@ def optimal_maneuver(fish, detection_point_3D, **kwargs):
     #-------------------------------------------------------------------------------------------------------------------
     # Find the optimal maneuver using Search and Rescue Optimization
     #-------------------------------------------------------------------------------------------------------------------
-    prey_velocity = kwargs.get('prey_velocity', fish.focal_velocity)  # Prey velocity defaults to fish focal velocity if prey velocity not specified
     dims = 11 if not (fish.disable_wait_time or xd > 0) else 10  # Don't bother optimizing wait time if it's disabled or item was detected downstream
-    optimization_model = CompiledSARO(fish, prey_velocity, xd, yd, max_iterations=kwargs.get('max_iterations', DEFAULT_OPT_ITERATIONS),
-                                      pop_size=kwargs.get('n', DEFAULT_OPT_N),
-                                      dims=dims, tracked=kwargs.get('tracked', False))
+    optimization_model = CompiledSARO(fish, xd, yd, max_iterations=kwargs.get('max_iterations', DEFAULT_OPT_ITERATIONS),
+                                      pop_size=kwargs.get('n', DEFAULT_OPT_N), dims=dims,
+                                      tracked=kwargs.get('tracked', False))
     solution = optimization_model.solve()
-    fittest_maneuver = maneuver_from_proportions(fish, prey_velocity, xd, yd, solution.position)
+    fittest_maneuver = maneuver_from_proportions(fish, xd, yd, solution.position)
     fittest_maneuver.objective_function_evaluations = optimization_model.nfe
 
     fittest_maneuver.matrix_3Dfrom2D = np.ascontiguousarray(matrix_3Dfrom2D) # Set attributes to allow the fittest solution to convert; the contiguous array typing prevents a silly warning about Numba execution speed in np.dot in maneuver.to_3D

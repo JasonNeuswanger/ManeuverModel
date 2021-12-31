@@ -55,7 +55,6 @@ def copy_solution(s):
 
 saro_spec = [
     ('fish', fish_type),
-    ('prey_velocity', float64),
     ('det_x', float64),                        # detection position x coord
     ('det_y', float64),                        # detection position y coord
     ('max_iterations', uint64),
@@ -88,7 +87,8 @@ saro_spec = [
 @jitclass(saro_spec)
 class CompiledSARO:
 
-    def __init__(self, fish, prey_velocity, det_x, det_y, max_iterations=DEFAULT_OPT_ITERATIONS, pop_size=DEFAULT_OPT_N, dims=11, tracked=False):
+    def __init__(self, fish, det_x, det_y, max_iterations=DEFAULT_OPT_ITERATIONS, pop_size=DEFAULT_OPT_N, dims=11,
+                 tracked=False):
         """
         Args:
             max_iterations (int): maximum number of iterations
@@ -98,7 +98,6 @@ class CompiledSARO:
         """
 
         self.fish = fish
-        self.prey_velocity = prey_velocity
         self.det_x = det_x
         self.det_y = det_y
 
@@ -131,7 +130,7 @@ class CompiledSARO:
 
     def solution_with_evaluated_fitness(self, p, origin):
         self.nfe += 1
-        maneuver = maneuver_from_proportions(self.fish, self.prey_velocity, self.det_x, self.det_y, p)
+        maneuver = maneuver_from_proportions(self.fish, self.det_x, self.det_y, p)
         new_p = maneuver.proportions()[:self.dims] # this saves the changes made to thrusts within the maneuver to arrive from downstream of the focal point at the end
         if maneuver.dynamics.energy_cost == CONVERGENCE_FAILURE_COST:
             self.nfe_nonconvergent += 1
