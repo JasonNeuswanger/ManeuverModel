@@ -76,6 +76,7 @@ def calculate_cost_tables(fork_length, velocity, taskid):
     # for y in ys: print("y = {0:.5f}".format(y))
     ac = np.zeros(shape=(len(xs),len(ys)))
     pd = np.zeros(shape=(len(xs),len(ys)))
+    rd = np.zeros(shape=(len(xs),len(ys)))
     count = 1
     final_count = float(len(xs) * len(ys))
     for i in range(len(xs)):
@@ -89,16 +90,18 @@ def calculate_cost_tables(fork_length, velocity, taskid):
             if sol.activity_cost != CONVERGENCE_FAILURE_COST:
                 ac[i,j] = sol.activity_cost
                 pd[i,j] = sol.pursuit_duration
+                rd[i,j] = sol.return_duration
             else:
                 ac[i,j] = np.nan
                 pd[i,j] = np.nan
+                rd[i, j] = np.nan
             if IS_MAC:
-                print(f"Solution {count} of {final_count:.0f}: For fl={fork_length:.1f} cm, v={velocity:.1f} cm/s, at x={xs[i]:.2f} and y={ys[j]:.2f}, energy cost is {sol.activity_cost:.5f} J and pursuit duration is {sol.pursuit_duration:.3f} s.")
+                print(f"Solution {count} of {final_count:.0f}: For fl={fork_length:.1f} cm, v={velocity:.1f} cm/s, at x={xs[i]:.2f} and y={ys[j]:.2f}, energy cost is {sol.activity_cost:.5f} J and pursuit duration is {sol.pursuit_duration:.3f} and return duration is {sol.return_duration:.3f} s.")
             if count % 5 == 0 and not IS_MAC:
                 db_execute("UPDATE maneuver_model_tasks SET progress={0} WHERE taskid={1}".format(count/final_count, taskid))
             count += 1 
     # Now, run quality control check on the ec and pd values, redoing calculation if they're too far off from their neighbors or came out np.nan the first time
-    for table in (ac, pd):
+    for table in (ac): # base the check only on ac
         imax = table.shape[0]
         jmax = table.shape[1]
         for i in range(imax):
@@ -114,7 +117,7 @@ def calculate_cost_tables(fork_length, velocity, taskid):
                     ratio_to_median = table[i,j] / neighbor_median
                     worst_allowable_ratio = 3.0 # assume optimal solution wasn't found if solution differs from neighbors by factor of 3
                     if ratio_to_median < 1/worst_allowable_ratio or ratio_to_median > worst_allowable_ratio or np.isnan(table[i,j]):
-                        for retry in (2,3): # If we didn't get reasonable values the first time, try again up to 5 times with more rigorous but time-consuming algorithm parameters
+                        for retry in (2,3,4): # If we didn't get reasonable values the first time, try again with more rigorous but time-consuming algorithm parameters
                             if not IS_MAC: db_execute("UPDATE maneuver_model_tasks SET retries=retries+1 WHERE taskid={0}".format(taskid))
                             sol = optimize.optimal_maneuver(fish,
                                                             detection_point_3D=(xs[i], ys[j], 0.0),
@@ -124,11 +127,14 @@ def calculate_cost_tables(fork_length, velocity, taskid):
                             if sol.activity_cost < ac[i, j]:
                                 ac[i,j] = sol.activity_cost
                                 pd[i,j] = sol.pursuit_duration
+                                rd[i,j] = sol.return_duration
                                 ratio_to_median = table[i,j] / neighbor_median
                                 if 1/worst_allowable_ratio <= ratio_to_median <= worst_allowable_ratio:
                                     break
+                        if np.isnan(table[i,j]):
+                            print(f"Retries still produced NaN activity cost for x={xs[i]}, y={ys[j]} with fl={fork_length}, velocity={velocity}.")
                         if ratio_to_median < 1/worst_allowable_ratio or ratio_to_median > worst_allowable_ratio:
-                            print(f"Retries to match neighbors failed for x={xs[i]}, y={ys[j]} with fl={fork_length}, velocity={velocity}. ratio_to_median={ratio_to_median}")
+                            print(f"Retries to match neighbors failed for x={xs[i]}, y={ys[j]} with fl={fork_length}, velocity={velocity}, ratio_to_median={ratio_to_median}.")
                             if not IS_MAC: db_execute(f"UPDATE maneuver_model_tasks SET has_failed_retries=1 WHERE taskid={taskid}")
     # Count up final number of NaNs if any, using the activity cost table
     nan_count = np.count_nonzero(np.isnan(ac))
@@ -138,13 +144,14 @@ def calculate_cost_tables(fork_length, velocity, taskid):
     ys = np.concatenate([np.flip(-ys[:4], axis=0), ys])
     ac = np.concatenate([np.flip(ac[:,:4], axis=1), ac], axis=1)
     pd = np.concatenate([np.flip(pd[:,:4], axis=1), pd], axis=1)
-    return ac, pd, xs, ys
+    rd = np.concatenate([np.flip(rd[:,:4], axis=1), rd], axis=1)
+    return ac, pd, rd, xs, ys
 
-def save_cost_tables(ec, pd, xs, ys, fl, v):
+def save_cost_tables(ec, pd, rd, xs, ys, fl, v):
     if IS_MAC:
         base_folder = os.path.join(os.path.sep, 'Users', 'Jason', 'Desktop', 'Maneuver Sheet Test')
     else:
-        base_folder = os.path.join(os.path.sep, 'home', 'alaskajn', 'manever_model_tables')
+        base_folder = os.path.join(os.path.sep, 'home', 'alaskajn', 'maneuver_model_tables')
     folder = os.path.join(base_folder, "fl_{0}".format(fl), "v_{0}".format(v))
     if not os.path.exists(folder):
         os.makedirs(folder)    
@@ -153,6 +160,7 @@ def save_cost_tables(ec, pd, xs, ys, fl, v):
         np.savetxt(os.path.join(folder, filename), costs_labeled, fmt='%.7f,')
     save_cost_table(ec, xs, ys, 'activity_cost.csv')
     save_cost_table(pd, xs, ys, 'pursuit_duration.csv')
+    save_cost_table(rd, xs, ys, 'return_duration.csv')
 
 select_query = "SELECT taskid, fork_length, velocity FROM maneuver_model_tasks WHERE start_time IS NULL"
 task_data = db_execute(select_query).fetchone()
@@ -161,8 +169,8 @@ while task_data is not None:
     instance_id = 'my_laptop' if IS_MAC else uname()[1]
     print("Beginning task {0}.".format(taskid))
     if not IS_MAC: db_execute("UPDATE maneuver_model_tasks SET start_time=NOW(), machine='{1}', progress=0.0 WHERE taskid={0}".format(taskid, instance_id))
-    ac, pd, xs, ys = calculate_cost_tables(fork_length, velocity, taskid)
-    save_cost_tables(ac, pd, xs, ys, fork_length, velocity)
+    ac, pd, rd, xs, ys = calculate_cost_tables(fork_length, velocity, taskid)
+    save_cost_tables(ac, pd, rd, xs, ys, fork_length, velocity)
     if not IS_MAC: db_execute("UPDATE maneuver_model_tasks SET completion_time=NOW(), progress=NULL WHERE taskid={0}".format(taskid))
     task_data = db_execute(select_query).fetchone() if not FAST_TEST else None
 db.close()

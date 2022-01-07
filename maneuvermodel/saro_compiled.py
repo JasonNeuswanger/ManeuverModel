@@ -190,6 +190,12 @@ class CompiledSARO:
                 pop_x[i] = self.create_random_solution()
                 self.dyn_USN[i] = 0
         new_master_pop = pop_x + pop_m # because no addition is defined for typed.List
+        # Custom step being added for hard problems with difficulty converging -- replace nonconvergent solutions with random new ones
+        # The theory here is that some convergence failures were getting trapped with a bunch of mixing of solutions in nonconvergent
+        # regions and the algorithm never escaped. This should prevent that from happening by shuffling bad ones.
+        for i in range(self.pop_size):
+            if new_master_pop[i].fitness == -CONVERGENCE_FAILURE_COST: # could also enforce convergence in create_random_solution itself
+                new_master_pop[i] = self.create_random_solution()
         return sorted(new_master_pop, key=lambda agent: -agent.fitness)
 
     def solve(self, verbose=False):

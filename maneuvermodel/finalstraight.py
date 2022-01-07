@@ -105,7 +105,7 @@ class ManeuverFinalStraight(object):
             self.final_speed_a = u_t(self.initial_speed, self.thrust_a_experienced, self.duration_a, tau_a)
         except Exception:
             print("Exception caught when calculating segment A of ManeuverFinalStraight in finalstraight.py")
-            self.convergence_failed('8', 0)
+            self.convergence_failed('9', 0)
         segment_b_completion_code = self.compute_segment_b()
         if segment_b_completion_code == 0:  # segment b constructed successfully
             self.duration = self.duration_a + self.duration_b

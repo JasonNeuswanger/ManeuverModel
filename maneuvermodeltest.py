@@ -48,17 +48,34 @@ def typical_maneuver(species, **kwargs):
 # # opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D)
 # opt, opt_model = optimize.optimal_maneuver(test_fish, n=DEFAULT_OPT_N, max_iterations=DEFAULT_OPT_ITERATIONS, detection_point_3D=detection_point_3D, tracked=True, return_optimization_model=True)
 
-species = 'Chinook Salmon'
-test_fish = create_typical_fish(species, use_total_cost=False, mean_water_velocity=1)
-detection_point_3D = (-1, 0.2, 0.0)
-# opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D)
-opt, opt_model = optimize.optimal_maneuver(test_fish, n=DEFAULT_OPT_N, max_iterations=DEFAULT_OPT_ITERATIONS, detection_point_3D=detection_point_3D, tracked=True, return_optimization_model=True)
-
 # todo make spreadsheet creation code export reproduction info for nans
 
 # best solution is 0.159198
 
 # visualize.summarize_solution(opt, display = True, title = 'Typical Dolly', export_path = None, detailed=True, add_text_panel=True)
+
+
+test_x=-135.3565092
+test_y=1.2
+fork_length=3.0
+velocity=1.0
+fish = maneuveringfish.ManeuveringFish(fork_length=fork_length,
+                                           mean_water_velocity=velocity,
+                                           base_mass=0,  # defaults to regression from length
+                                           temperature=10,  # irrelevant in this case
+                                           SMR=0,  # irrelevant in this case
+                                           max_thrust=250,
+                                           NREI=0,  # irrelevant in this case
+                                           use_total_cost=False,
+                                           disable_wait_time=False)
+opt, opt_model = optimize.optimal_maneuver(fish,
+                                detection_point_3D=(test_x, test_y, 0.0),
+                                max_iterations=(DEFAULT_OPT_ITERATIONS/2),
+                                max_n=(DEFAULT_OPT_N/2),
+                                tracked=True,
+                                return_optimization_model=True,
+                                suppress_output=False)
+print("Had {0} nonconvergent evaluations".format(opt_model.nfe_nonconvergent))
 
 
 

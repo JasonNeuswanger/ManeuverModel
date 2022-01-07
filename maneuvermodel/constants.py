@@ -52,7 +52,7 @@ SENSITIVITY_WEBB_FACTOR_MULTIPLIER = 1.0
 #---------------------------------------------------------------------------------------------------------------#
 
 DEFAULT_OPT_N = 200
-DEFAULT_OPT_ITERATIONS = 300
+DEFAULT_OPT_ITERATIONS = 400
 
 SLOW_OPT_N = 300
 SLOW_OPT_ITERATIONS = 1000
@@ -69,7 +69,5 @@ SLOW_OPT_ITERATIONS = 1000
 # - Test optimizing maneuver vs maneuver + opportunity costs
 # - Test enabling wait time (wait times are ideally predicted near 0 because we base estimated detections on start of motion)
 
-# todo see if I can derive what my model implies about the ACT parameter for the WI bioenergetics model
-
-# todo interpolation tables
-
+# todo see if I can derive what my model implies about the ACT parameter for the WI bioenergetics model -- yes it's just a constant multiplier on SMR
+# the fish bio 3.0 manual recommended ACT of 9.9 for sockeye and pinks, 11.7 for lake trout, 9.7 for chinook and coho and steelhead
