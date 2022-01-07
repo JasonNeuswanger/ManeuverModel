@@ -20,8 +20,7 @@ for i in range(N_NODES):
     # formerly PBS -l nodes=1:ppn={cores}:Intel
     # partition should be the name of the queue, which is batch?
     # previously requested 500mb memory
-    batch_file_contents = """
-    #!/bin/bash
+    batch_file_contents = """#!/bin/bash
     #SBATCH --job-name={job_name}
     #SBATCH --partition=batch
     #SBATCH --nodes=1
