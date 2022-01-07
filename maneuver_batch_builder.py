@@ -16,23 +16,25 @@ JOB_NAME = argv[2]
 for i in range(N_NODES):
     batch_name_raw = "{0} Node {1}".format(JOB_NAME, i)
     batch_name = re.sub(r'\W+', '', batch_name_raw)
+    # formerly had this one, can't find a translation: #PBS -S /bin/bash
+    # formerly PBS -l nodes=1:ppn={cores}:Intel
+    # partition should be the name of the queue, which is batch?
+    # previously requested 500mb memory
     batch_file_contents = """
-    #PBS -S /bin/bash
-    #PBS -N {job_name}
-    #PBS -q batch
-    #PBS -l nodes=1:ppn={cores}:Intel
-    #PBS -l walltime=336:00:00
-    #PBS -l mem=500mb
-    #PBS -M jasonneuswanger@gmail.com
-    #PBS -m ae
-
-    cd $PBS_O_WORKDIR
+    #SBATCH --job-name={job_name}
+    #SBATCH --partition=batch
+    #SBATCH --nodes=1
+    #SBATCH --n-tasks-per-node={cores}
+    #SBATCH --time=336:00:00
+    #SBATCH --mem=2048mb
+    #SBATCH --mail-user=jasonneuswanger@gmail.com
+    #SBATCH --mail-type=END,FAIL,REQUEUE
 
     echo
-    echo "Job ID: $PBS_JOBID"
-    echo "Queue:  $PBS_QUEUE"
-    echo "Cores:  $PBS_NP"
-    echo "Nodes:  $(cat $PBS_NODEFILE | sort -u | tr '\n' ' ')"
+    echo "Job ID: $SLURM_JOB_ID"
+    echo "Queue (Partition):  $SLURM_JOB_PARTITION"
+    echo "Cores:  $SLURM_NTASKS"
+    echo "Nodes:  $($SLURM_JOB_NODELIST | sort -u | tr '\n' ' ')"
     echo
     
     python3 maneuver_spreadsheet_creation.py
@@ -41,4 +43,4 @@ for i in range(N_NODES):
     with open('{0}.sh'.format('batches/' + batch_name), 'w') as batch_file:
         batch_file.write(batch_file_contents)
 
-    os.system("qsub 'batches/{0}.sh'".format(batch_name)) # no comment
+    os.system("sbatch 'batches/{0}.sh'".format(batch_name)) # no comment
