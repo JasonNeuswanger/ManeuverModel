@@ -25,8 +25,8 @@ for i in range(N_NODES):
     #SBATCH --partition=batch
     #SBATCH --nodes=1
     #SBATCH --n-tasks-per-node={cores}
+    #SBATCH --mem=1gb
     #SBATCH --time=336:00:00
-    #SBATCH --mem=2048mb
     #SBATCH --mail-user=jasonneuswanger@gmail.com
     #SBATCH --mail-type=END,FAIL,REQUEUE
 
