@@ -149,10 +149,8 @@ class ManeuverDynamics(object):
         focal_point_x_at_critical_point = -self.v * (t_p + t_0)
         if focal_point_x_at_critical_point > fish_x_at_critical_point:
             amount_to_back_up = max(focal_point_x_at_critical_point - fish_x_at_critical_point, 0.001) # back up at least 0.01 cm to prevent lengthy cycling close to convergence but not quite there
-            #print("Reeturning needs_to_back_up value", amount_to_back_up)
             return amount_to_back_up # turn 3 needs to back up and let focal point get in front
         else:
-            #print("No longer needs to back up")
             return 0 # turn 3 is fine
 
     def penultimate_point(self, maneuver):

@@ -70,13 +70,28 @@ fish = maneuveringfish.ManeuveringFish(fork_length=fork_length,
                                            disable_wait_time=False)
 opt, opt_model = optimize.optimal_maneuver(fish,
                                 detection_point_3D=(test_x, test_y, 0.0),
-                                max_iterations=(DEFAULT_OPT_ITERATIONS/2),
-                                max_n=(DEFAULT_OPT_N/2),
+                                max_iterations=(DEFAULT_OPT_ITERATIONS),
+                                max_n=(DEFAULT_OPT_N),
                                 tracked=True,
                                 return_optimization_model=True,
                                 suppress_output=False)
-print("Had {0} nonconvergent evaluations".format(opt_model.nfe_nonconvergent))
+print(f"Had {opt_model.nfe_nonconvergent} nonconvergent evaluations out of {opt_model.nfe}")
+# failure code 8 is a loop-de-loop
 
+# nonconvergents (thousands): 15, 31, 23, 41, 40, 47, 17, 22
+# new nonconvergents: 7, 9, 11, 11, 12, 9 -- much better
+
+# new random maneuvers have mostly 6.2 and 8 with occasional 6.1 convergence problems
+
+# basic problem is the fish generally needs either a very long wait time to put the focal point in front or massively doubling back
+# to return to the region below the focal point... and that doubling back generally involves one of the figure-8-ish maneuvers
+# I have blocked off.
+# I suspect all the real solutions have wait time very near the max
+
+# pthrusts of optimal solution with no wait time allowed: array([0.00107231, 0.00361844, 0.00341259, 0.00410794, 0.00364816])
+# proportional wait time of optimal solution when enabled: 9.86045771 and pthrusts: array([0.00320608, 0.00536606, 0.00455797, 0.00486183, 0.00284006])
+
+visualize.summarize_solution(opt, display=True, title='Convergence Oddity', export_path=None, detailed=True, add_text_panel=True)
 
 
 # Testing the number of function evaluations requiring slowdowns over time and therefore basically lost in the algorithm

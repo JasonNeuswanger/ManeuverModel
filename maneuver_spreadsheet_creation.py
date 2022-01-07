@@ -101,7 +101,7 @@ def calculate_cost_tables(fork_length, velocity, taskid):
                 db_execute("UPDATE maneuver_model_tasks SET progress={0} WHERE taskid={1}".format(count/final_count, taskid))
             count += 1 
     # Now, run quality control check on the ec and pd values, redoing calculation if they're too far off from their neighbors or came out np.nan the first time
-    for table in (ac): # base the check only on ac
+    for table in [ac]: # base the check only on ac
         imax = table.shape[0]
         jmax = table.shape[1]
         for i in range(imax):

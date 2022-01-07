@@ -52,7 +52,7 @@ SENSITIVITY_WEBB_FACTOR_MULTIPLIER = 1.0
 #---------------------------------------------------------------------------------------------------------------#
 
 DEFAULT_OPT_N = 200
-DEFAULT_OPT_ITERATIONS = 400
+DEFAULT_OPT_ITERATIONS = 300
 
 SLOW_OPT_N = 300
 SLOW_OPT_ITERATIONS = 1000

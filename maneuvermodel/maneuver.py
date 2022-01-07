@@ -132,10 +132,22 @@ class Maneuver(object):
     def calculate_fitness(self):
         self.path = ManeuverPath(self)
         self.dynamics = ManeuverDynamics(self)
+        self.capture_x = self.path.capture_point[0]
+        tried_capped_back_up = False
         while self.dynamics.needs_to_back_up_by > 0.0:  # move the final turn downstream to allow room to converge on the focal point from below
-            self.final_turn_x += self.dynamics.needs_to_back_up_by  # back up enough to be behind the focal point approximately
-            # if self.final_turn_x > self.capture_x + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length:
-            #     print("backing up by", self.dynamics.needs_to_back_up_by,"put final_turn_x", self.final_turn_x,"> boundary",self.capture_x + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length)
+            new_final_turn_x = self.final_turn_x + self.dynamics.needs_to_back_up_by  # back up enough to be behind the focal point approximately
+            max_final_turn_x = max(MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length, self.capture_x + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length) + 2*self.r1 + 2*self.r2
+            if new_final_turn_x > max_final_turn_x:  # rare convergence problem occurring in some non-optimal solutions
+                if not tried_capped_back_up:
+                    self.final_turn_x = max_final_turn_x - 0.000000001  # avoid making long jumps back that overshoot the maximum final turn x
+                    tried_capped_back_up = True
+                else: # if we're right at the boundary and still need to keep going past the max final turn x, convergence failed
+                    self.convergence_failure_code = '10' # there is a good chance this never happens but I'm handling it just in case, to avoid infinite loops
+                    self.dynamics.activity_cost = CONVERGENCE_FAILURE_COST
+                    self.dynamics.total_cost = CONVERGENCE_FAILURE_COST
+                    break
+            else:
+                self.final_turn_x = new_final_turn_x
             self.path = ManeuverPath(self)
             self.dynamics = ManeuverDynamics(self)
             self.had_final_turn_adjusted = True
@@ -146,7 +158,6 @@ class Maneuver(object):
         self.return_duration = self.dynamics.return_duration
         self.activity_cost = self.dynamics.activity_cost
         self.energy_cost_including_SMR = self.dynamics.activity_cost + self.fish.SMR_J_per_s * self.duration
-        self.capture_x = self.path.capture_point[0]
 
     def calculate_summary_metrics(self):
         """ Calculates attributes of the solution that only need to be requested if it was the optimal solution to a given maneuver, not for each intermediate solution. Separated from
@@ -192,8 +203,7 @@ class Maneuver(object):
         # Set characteristics of the final straight to catch up to the focal point / velocity
         p[8] = self.final_pthrust_a
         min_final_turn_x = xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length
-        max_final_turn_x = max(MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length,
-                               xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length) + self.r1 + 2*self.r2
+        max_final_turn_x = max(MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length) + 2*self.r1 + 2*self.r2
         p[9] = proportion_of_range(self.final_turn_x, min_final_turn_x, max_final_turn_x)
         return p
     
@@ -227,7 +237,7 @@ def maneuver_from_proportions(fish, xd, yd, p):
     # maximum value of final_turn_x is governed by an arbitrary multiple of fish.fork_length, either to the -x side of
     # the capture point or to the +x side of whichever is greater, the capture point or the origin
     min_final_turn_x = xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length
-    max_final_turn_x = max(MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length) + r1 + 2*r2
+    max_final_turn_x = max(MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length) + 2*r1 + 2*r2
     final_turn_x = value_from_proportion(p[9], min_final_turn_x, max_final_turn_x)
     # Creation solution object and return
     return Maneuver(fish, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a)

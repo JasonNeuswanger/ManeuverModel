@@ -228,7 +228,19 @@ class CompiledSARO:
         return self.solution
 
     def create_random_solution(self):
-        position = np.random.uniform(0, 1, self.dims)
+        # By generating a random proportion from -0.1 to 1.1 and clipping, I create about a 10 % chance for any given
+        # number to be at the upper or lower limit of its proportional range, which makes it easier for the model to
+        # begin finding convergent solutions when the only ones are right on the boundary of some parameter or another,
+        # especially wait time. I'm clipping to numbers slightly outside 0 and 1 because otherwise floating point
+        # precision errors end up putting parameters outside their proportional range by around 1e-16 when they're
+        # converted back and forth from real values to proportions. Note I can't use numpy.clip because some of my
+        # other code requires Python 3.7 for Mayavi, and the compatible Numba version for Python 3.7 lacks np.clip().
+        position = np.random.uniform(-0.1, 1.1, 11)
+        for i in range(len(position)):
+            if position[i] < 0:
+                position[i] = 0.00000001
+            if position[i] > 1:
+                position[i] = 0.99999999
         return self.solution_with_evaluated_fitness(position, 0)
 
 

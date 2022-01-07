@@ -16,9 +16,9 @@ param_labels = ['Thrust (turn 1)', 'Thrust (straight 1)', 'Thrust (turn 2)', 'Th
                 'Thrust (straight 3A)', 'X (turn 3)', 'Wait time']
 
 def summarize_solution(solution, display=True, title=None, export_path=None, should_print_dynamics=True, detailed=False, add_text_panel=False, plot_dpi=132, plot_base_width=7.5, plot_base_height=6.5):
-    if solution.dynamics.activity_cost >= CONVERGENCE_FAILURE_COST:
-        print("Cannot summarize solution in which the final straight failed to converge.")
-        return
+    # if solution.dynamics.activity_cost >= CONVERGENCE_FAILURE_COST:
+    #     print("Cannot summarize solution in which the final straight failed to converge.")
+    #     return
     plt.ioff()  # set interactive mode to off so the plot doesn't display until show() is called
     sns.set_style('ticks')
     figsize = (plot_base_width+(2.6 if add_text_panel else 0), 5.0) if detailed else (plot_base_height+(2.6 if add_text_panel else 0), 4.75)
