@@ -49,21 +49,8 @@ maneuver_final_straight_spec = [
 def thrust_a_adjusted_for_tailbeats(thrust_a, tp, xp, ui, v, fish_total_length):
     # Making this a separate function so I can call it in advance in needs_to_slow_down
     uf = thrust_a
-
-    # Duration estimate based on first-order taylor expansion of 'st' equation about zero
-    # Q = (uf + ui) / (uf - ui)
-    # duration_estimate = ((1 + Q)*(tp*v + xp))/(-uf + Q*uf - v - Q*v) # rough guess at duration of segment a in advance, expanded about 0
-
-    # Duration estimate based on thrust as constant speed
-    duration_estimate = (tp * v + xp) / (uf - v)
-
-    # Duration estimate based on first-order taylor expansion of 'st' equation about the estimate above
-    # tau = self.tau_times_thrust / uf
-    # Q = (uf + ui) / (uf - ui)
-    # Z = np.exp((tp*v + xp)/(self.tau_times_thrust - tau*v))
-    # duration_estimate = -(((tp*v + xp)*(v + Q*(-2*uf + v)*Z) + self.tau_times_thrust*(uf - v)*(1 + Q*Z)*np.log((1 + Q*Z)**2/(np.exp((tp*v + xp)/(self.tau_times_thrust - tau*v))*(1 + Q)**2)))/(-uf**2 + v**2 + Q*(uf - v)**2*Z))
-
-    initial_tailbeat_frequency = 1.3333333 * (1 + ui / fish_total_length)
+    duration_estimate = (tp * v + xp) / (uf - v) # Duration estimate based on thrust as constant speed
+    initial_tailbeat_frequency = 0.98 + 2.54 * (ui/fish_total_length) # tailbeat frequency from Webb 1991 eqn 9
     initial_tailbeat_duration = 1 / initial_tailbeat_frequency
     if duration_estimate <= initial_tailbeat_duration:
         estimated_thrust_at_end = ui + (uf - ui) * (duration_estimate / initial_tailbeat_duration)
@@ -72,8 +59,6 @@ def thrust_a_adjusted_for_tailbeats(thrust_a, tp, xp, ui, v, fish_total_length):
         full_thrust_duration = duration_estimate - initial_tailbeat_duration
         mean_thrust_during_first_tailbeat = (ui + uf) / 2
         mean_thrust = uf * (full_thrust_duration / duration_estimate) + mean_thrust_during_first_tailbeat * (initial_tailbeat_duration / duration_estimate)
-    # if mean_thrust < 0:
-    #     print("Got mean thrust < 0 from duration estimate ", duration_estimate)
     return max(mean_thrust, 1.02 * v)  # don't let the adjustment drop it below 1.02*v
 
 @jitclass(maneuver_final_straight_spec)
@@ -153,7 +138,7 @@ class ManeuverFinalStraight(object):
         tp = self.initial_t
         xp = self.initial_x
         ut3 = self.initial_speed
-        ua = self.thrust_a_experienced # todo maybe something about this in the min/max is the reason for so many convergence failures? or erroneous estimate of duration_a?
+        ua = self.thrust_a_experienced
         ta = t_a
         if abs((ta*ua)/tauTimesUf) < EXP_OVERFLOW_THRESHOLD:
             return (ta + tp)*v + xp + tauTimesUf*np.log(16) - tauTimesUf*(2*np.log((ua + (2*ua*(-ua + ut3))/(ua - ut3 + np.exp((ta*ua)/tauTimesUf)*(ua + ut3)) + v)/v) + np.log((4*(ua*np.cosh((ta*ua)/(2.*tauTimesUf)) + ut3*np.sinh((ta*ua)/(2.*tauTimesUf)))**2)/ua**2))

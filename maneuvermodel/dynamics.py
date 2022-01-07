@@ -16,7 +16,9 @@ maneuver_dynamics_spec = [
     ('moving_duration', float64),
     ('duration', float64),
     ('mean_speed', float64),
-    ('energy_cost', float64),
+    ('activity_cost', float64),
+    ('activity_cost_pursuit', float64),
+    ('activity_cost_return', float64),
     ('opportunity_cost', float64),
     ('total_cost', float64),
     ('turn_1', segment_type),
@@ -70,15 +72,22 @@ class ManeuverDynamics(object):
                                                     False)
             if not self.straight_3.creation_succeeded:
                 maneuver.convergence_failure_code = self.straight_3.convergence_failure_code
-                self.energy_cost = CONVERGENCE_FAILURE_COST
+                self.activity_cost = CONVERGENCE_FAILURE_COST
                 self.total_cost = CONVERGENCE_FAILURE_COST
                 return
         except Exception:
             print("Exception caught when creating ManeuverFinalStraight in ManeuverDynamics.__init__.")
         maneuver.path.update_with_straight_3_length(self.straight_3.length)
-        # Prevent suboptimal figure-8 maneuvers that can trap the optimization algorithm as strong local minima far from true minimum
-        if maneuver.path.turn_2_length > np.pi * maneuver.r2 and maneuver.path.turn_3_length > np.pi * maneuver.r3 and maneuver.path.turn_2_direction != maneuver.path.turn_3_direction:
-            self.energy_cost = CONVERGENCE_FAILURE_COST
+        # The commented-out line below was a condition specifically to prevent bad figure-8s, but it is covered by single the condition below
+        # if maneuver.path.turn_2_length > np.pi * maneuver.r2 and maneuver.path.turn_3_length > np.pi * maneuver.r3 and maneuver.path.turn_2_direction != maneuver.path.turn_3_direction:
+
+        # Prevent rare suboptimal solutions that can happen if the third turn is allowed to be more than 180 degrees. It is not
+        # intended to ever be that large, but solutions where it is very large can end up being powerful local optima that trap
+        # the optimization in solutions with 3-5X the energy cost of the true optimum. These include solutions that involve
+        # doing an unnecessary circular loop backward to capture prey or doing an unnecessary figure-8 (in water coordinates).
+        if maneuver.path.turn_3_length > np.pi*maneuver.r3:
+            maneuver.convergence_failure_code = '8' # avoided return turn being more than 180 degrees
+            self.activity_cost = CONVERGENCE_FAILURE_COST
             self.total_cost = CONVERGENCE_FAILURE_COST
             return
         # Save final attributes
@@ -88,9 +97,11 @@ class ManeuverDynamics(object):
         self.moving_duration = self.pursuit_duration + self.return_duration
         self.duration = self.wait_duration + self.pursuit_duration + self.return_duration # duration of the full maneuver in seconds
         self.mean_speed = maneuver.path.total_length / self.moving_duration
-        self.energy_cost = self.turn_1.cost + self.straight_1.cost + self.turn_2.cost + self.straight_2.cost + self.turn_3.cost + self.straight_3.cost # energy cost of the full maneuver in Joules
+        self.activity_cost = self.turn_1.cost + self.straight_1.cost + self.turn_2.cost + self.straight_2.cost + self.turn_3.cost + self.straight_3.cost # energy cost of the full maneuver in Joules
+        self.activity_cost_pursuit = self.turn_1.cost + self.straight_1.cost
+        self.activity_cost_return = self.activity_cost - self.activity_cost_pursuit
         self.opportunity_cost = fish.NREI * (self.wait_duration + self.pursuit_duration)                                 # cost of not searching during the wait/pursuit
-        self.total_cost = self.energy_cost + self.opportunity_cost
+        self.total_cost = self.activity_cost + self.opportunity_cost
 
     def next_thrust_from_proportion(self, proportional_next_thrust, is_not_final_a):
         min_next_thrust = self.fish_min_thrust if is_not_final_a else 1.02 * self.v

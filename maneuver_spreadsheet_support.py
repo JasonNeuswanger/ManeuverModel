@@ -3,53 +3,62 @@ import pymysql
 from maneuvermodel import maneuveringfish, optimize
 from scipy.interpolate import RectBivariateSpline
 
-
 # had to sys.path.append("/Users/Jason/Dropbox/Drift Model Project/Calculations/driftmodeldev/") when it stopped finding the module
 
-#---------------------------------------------------------------------------------------------------------------------------------------------------------
-#                                                               BASIC SUMMARY
-#---------------------------------------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------
+#                                                    BASIC SUMMARY
+#-----------------------------------------------------------------------------------------------------------------------
 
-# This file is intended to be run as a command-line script on an Amazon EC2 instance, which will generate .csv spreadsheets of the predicted
-# value of the response variable, then upload the results to the appropriate folder on an Amazon S3 store. Within that store, data is organized 
-# into folders by fork length, subfolders for current speed, subfolders of those for response variable (energy cost or pursuit duration), 
-# and within those,  a separate file for each  temperature. Within those files, rows represent the x direction (first column being x labels) 
-# and columns represent the y direction (first row being y labels). We provide tables for the positive-y half of the x-y plane; maneuvers at 
-# other positions will be found by rotating into that plane and/or taking advantage of the symmetry with respect to y.
+# This file is designed to explore the relevant boundaries for the interpolation tables, erring on the side of making
+# their coverage comfortably more expansive than needed. It includes justifications for the dimensions of the tables as
+# well as which tables are available, and it places job descriptions for the table calculator in a database.
 
-#---------------------------------------------------------------------------------------------------------------------------------------------------------
-#                                                  MODELING CHOICES, INCLUDING FIXED SETTINGS
-#---------------------------------------------------------------------------------------------------------------------------------------------------------
+# Data will eventually be organized by subfolders by fork length and current speed, with files for response variable
+# (activity cost and pursuit duration) within each. Within those files, rows represent the x direction (first column
+# being x coordinate labels) and columns the y direction (first row being y labels). Tables are provided for the
+# positive half of the x-y planes; maneuvers elsewhere ar found by rotating into that plane.
 
-# It isn't feasible to precalculate values for every conceivable combination of settings, so we instead choose the most likely applications 
-# and vary only the quantities mentioned in the Basic Summary. 
+# We save activity cost and pursuit duration, which are the relevant numbers to plug into another foraging model,
+# but this must be done carefully to make sure SMR is also accounted for when calculating net rate of energy intake.
+# The most relevant "handling time" for a model is pursuit duration, under the assumption that wait time and
+# the return stage don't count as "handling" because the fish can be detecting and potentially pursuing other prey
+# during that time. Only the pursuit is time lost with regard to other
+
+# todo figure out how SMR would be apportioned during an application based on pursuit duration only, and whether I should include anything else
+
+# todo note somewhere that handling time would exclude wait time, if using pursuit duration
+
+
+#-----------------------------------------------------------------------------------------------------------------------
+#                                  MODELING CHOICES, INCLUDING FIXED SETTINGS
+#-----------------------------------------------------------------------------------------------------------------------
+
+# It isn't feasible to precalculate values for every conceivable combination of settings, so we instead choose the most
+# likely applications and vary only the quantities mentioned in the Basic Summary.
 #
-# Max thrust was calculated linear regression on the species maxima I found to be effective for our three species in (max species length, max 
-# species thrust) pairs, the inputs were (8, 25), (25, 97), (50, 154). They made a nice little linear relationship at 
-# max_thrust = 2.35 * fork_length + 36.9 but I am rounding up for extra leeway at the cost of some computational efficiency. The purpose of the 
-# max_thrust is just to narrow the search space for the genetic algorithm without excluding any solutions it might actually find to be optimal.
+# Wait times are enabled to give accurate energy costs for items detected far upstream. Our paper suggested that
+# including wait times resulted in a worse fit to real data for the model, but that was in a test assuming the fish
+# detected the item when it responded to it. We could not know when they actually first detected items or how long they
+# really waited in such cases. However, from a theoretical standpoint, excluding wait time would result in excessively
+# high predicted time/energy costs for items detected far upstream, which is probably not the case. To avoid penalizing
+# more effective prey detection, we have to include wait time. Users wishing to exclude it can use this script to make
+# their own, net set of tables.
 #
-# Wait times are enabled to give accurate energy costs for items detected far upstream. Our paper suggested that including wait times resulted
-# in a worse fit to real data for the model, but that was in a test assuming the fish detected the item when it responded to it. We could not know 
-# when they actually first detected items or how long they really waited in such cases. However, from a theoretical standpoint, excluding wait time
-# would result in excessively high predicted time/energy costs for items detected far upstream, which might not really be the case. To avoid penalizing
-# more effective prey detection, we have to include wait time. But users wishing to exclude it can use this script to make their own tables.
-#
-# We use only energy cost and not total cost (including opportunity cost based on NREI), because adding the other variables would require vastly
-# more calculations, and because we found that the model excluding opportunity costs best fit our maneuver data from real fish.
-# 
-# We build tables of pursuit duration, rather than total maneuver duration, because those appear to be the best for 
+# We use only energy cost and not total cost (including opportunity cost based on NREI), because it would require far
+# more calculations to account for different levels of possible NREI, and we found that the model excluding opportunity
+# costs was the best fit our maneuver data from real fish anyway.
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------
 #                                                       BOUNDARY CALCULATIONS FOR THE TABLES
 #---------------------------------------------------------------------------------------------------------------------------------------------------------
 
 # CURRENT SPEED
-# speeds_in_bodylengths = [attempt.mean_current_speed / attempt.fish.best_length for attempt in all_foraging_attempts]
-#max(speeds_in_bodylengths) # 6.83
-#percentile(speeds_in_bodylengths,99) # 5.48
-#percentile(speeds_in_bodylengths,95) # 4.04
-#percentile(speeds_in_bodylengths,50) # 1.46
+speeds_in_bodylengths = [attempt.mean_current_speed / attempt.fish.best_length for attempt in all_foraging_attempts]
+max(speeds_in_bodylengths) # 6.83
+np.percentile(speeds_in_bodylengths, 99) # 5.48
+np.percentile(speeds_in_bodylengths, 95) # 4.04
+np.percentile(speeds_in_bodylengths, 50) # 1.46
+
 # Maneuvers at high current speeds in bodylengths/s were not uncommon.
 # It wouldn't be too abnormal to have a 4 cm Chinook in 20 cm/s water (5 bodylengths)
 # But it would be very abnormal to have a 50 cm Grayling in 150 cm/s water (3 bodylengths)
@@ -66,15 +75,14 @@ from scipy.interpolate import RectBivariateSpline
 # I'm putting the database query inside the second but not third level of the nested list, to strike the balance between
 # query size and query count
 
-fork_lengths = list(np.concatenate([np.arange(3,5,0.2),np.arange(5,10,0.5),np.arange(10,20,1),np.arange(20,57,2),np.arange(58,80,3)]))
-time_per_number = 4.0   # seconds required to compute one cell in the spreadsheet
-bytes_per_number = 9.8   # bytes required to store one cell in the spreadsheet
-max_instances = 50
-numbers_per_sheet = 609  # number of cells in each sheet, based on the resolution
+# Size appropriate velocity max is designed to exceed realistic foraging for fish of a given size and then some, while
+# still eliminating the work of calculating absurdly high velocities. max_velocity = 3.0 * fl + 50 # in cm/s and cm
 
-# Basing max focal velocity on a linear interpolation boundary from 30 cm/s at 3 cm fork length up to 120 cm/s at 80 cm body length
-# max_fv = 90/77 * fl + 2040 / 77
-# because it's all approx, max_fv = 1.2 * fl + 30
+fork_lengths = list(np.concatenate([np.arange(3,5,0.2),np.arange(5,10,0.5),np.arange(10,20,1),np.arange(20,57,2),np.arange(58,80,3)]))
+time_per_number = 6.0   # seconds required to compute one cell in the spreadsheet
+bytes_per_number = 9.8   # bytes required to store one cell in the spreadsheet
+numbers_per_sheet = 999  # number of cells in each sheet, based on the resolution
+max_instances = 25  # max number of virtual machines running calculations
 
 queries = []
 total_sheets = 0
@@ -82,38 +90,25 @@ total_bytes = 0
 total_time = 0
 all_velocities = list(np.concatenate([np.arange(1,19,2), np.arange(19, 40, 3), np.arange(40, 90, 5), np.arange(90,166,15)]))
 for fl in fork_lengths:
-    print("Generating queries for fork length ",fl)
-    focal_velocities = [v for v in all_velocities if v < 1.2 * fl + 30]
-    for fv in focal_velocities:
-        prey_velocities = [v for v in all_velocities if 0.5 * fv < v < 2.0 * fl + 40]
-        valuestr = ""
-        for pv in prey_velocities:
-            total_sheets += 1
-            total_bytes += bytes_per_number * numbers_per_sheet
-            total_time += time_per_number * numbers_per_sheet
-            valuestr += "({0:.1f},{1:.1f},{2:.1f}),".format(fl, fv, pv)
-        query = "INSERT INTO maneuver_model_tasks (fork_length, focal_velocity, prey_velocity) VALUES " + valuestr[:-1]
-        if valuestr != "":
-            queries.append(query)
+    size_appropriate_velocities = [v for v in all_velocities if v < 3.0 * fl + 50]
+    for v in size_appropriate_velocities:
+        total_sheets += 1
+        total_bytes += bytes_per_number * numbers_per_sheet
+        total_time += time_per_number * numbers_per_sheet
+        queries.append(f"INSERT INTO maneuver_model_tasks (fork_length, velocity) VALUES ({fl:.1f}, {v:.1f})")
 total_bytes *= 2 # because there are 2 response variables
 time_per_sheet = total_time / total_sheets
 real_time = (total_time / 3600) / max_instances
-cost = 0
-print("Total calculation predicted to generate {0} sheets in {1:.1f} cpu-hours ({2:.1f} min/sheet, {5:.1f} hours for {6} instances) taking {3:.1f} mb of space.".format(total_sheets, total_time/3600.0, time_per_sheet/60.0, total_bytes/(1024.0*1024.0), cost, real_time, max_instances))
-# Old UGA numbers (never ran): Total calculation predicted to generate 39745 sheets in 34101.2 cpu-hours (51.5 min/sheet, 852.5 hours for 40 instances) taking 849.9 mb of space and costing $0.000000.
-# Old Amazon numbers: Total calculation predicted to generate 20808 sheets in 2498.405 cpu-hours (7.2 min/sheet, 124.92025 hours for 20 instances) taking 258.6 mb of space and costing $124.920250.
-# New (3/19/2020) UGA: Total calculation predicted to generate 21500 sheets in 9997.5 cpu-hours (27.9 min/sheet, 199.9 hours for 50 instances) taking 249.2 mb of space.
-
+print("Total calculation predicted to generate {0} sheets in {1:.1f} cpu-hours ({2:.1f} min/sheet, {4:.1f} hours for {5} instances) taking {3:.1f} mb of space.".format(total_sheets, total_time/3600.0, time_per_sheet/60.0, total_bytes/(1024.0*1024.0), real_time, max_instances))
 
 # Actually generate the to-do list in the database -- ONLY DO THIS ONCE unless I am resetting the whole thing!
 # If I do reset the whole thing, I need to do ALTER TABLE maneuver_model_tasks AUTO_INCREMENT = 1
-##db = pymysql.connect(host="maneuver-model-tasks.crtfph6ctn2x.us-west-2.rds.amazonaws.com", port=3306, user="manmoduser", passwd="x]%o4g28", db="maneuver_model_tasks", autocommit=True)
-# db = pymysql.connect(host="troutnut.com", port=3306, user="jasonn5_calibtra", passwd="aVoUgLJyKo926", db="jasonn5_calibration_tracking", autocommit=True)
-# cursor = db.cursor()
-# for i in range(len(queries)):
-#    print("Running query {0} of {1}.".format(i,len(queries)))
-#    exq = cursor.execute(queries[i])
-# db.close()
+db = pymysql.connect(host="troutnut.com", port=3306, user="jasonn5_calibtra", passwd="aVoUgLJyKo926", db="jasonn5_calibration_tracking", autocommit=True)
+cursor = db.cursor()
+for i in range(len(queries)):
+   print("Running query {0} of {1}.".format(i,len(queries)))
+   exq = cursor.execute(queries[i])
+db.close()
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------
 #                           CHECKING ACCURACY WITH WHICH SPLINE PREDICTS DIRECT MODEL PREDICTIONS and optimizing spline parameters
@@ -141,7 +136,7 @@ for i in range(1,300):
     attempt = random.choice(all_foraging_attempts)
     testx = fork_length * attempt.reaction_vector[0] / attempt.fish.best_length
     testy = fork_length * attempt.lateral_reaction_distance / attempt.fish.best_length
-    test_energy_model = optimize.optimal_maneuver(fish, detection_point_3D = (testx, testy, 0.0), popsize=4, variant_scale=1.5, mixing_ratio=3.0, iterations=4500, use_starting_iterations=True, num_starting_populations=12, num_starting_iterations=500).dynamics.energy_cost
+    test_energy_model = optimize.optimal_maneuver(fish, detection_point_3D = (testx, testy, 0.0), popsize=4, variant_scale=1.5, mixing_ratio=3.0, iterations=4500, use_starting_iterations=True, num_starting_populations=12, num_starting_iterations=500).dynamics.activity_cost
     errors_A.append(100 * abs(spl_ec_665.ev(testx, testy) - test_energy_model) / test_energy_model) # percent error in log spline model
     errors_B.append(100 * abs(spl_ec_416.ev(testx, testy) - test_energy_model) / test_energy_model) # percent error in lin spline model
 print("Mean A (665) error is {0:.2f}, median {1:.2f}, 95th percentile {2:.2f}, max {3:.2f}. Mean B (416) error is {4:.2f}, median {5:.2f}, 95th percentile is {6:.2f}, max is {7:.2f}.".format(np.mean(errors_A), np.median(errors_A), percentile(errors_A,95), max(errors_A), np.mean(errors_B), np.median(errors_B), percentile(errors_B,95), max(errors_B)))

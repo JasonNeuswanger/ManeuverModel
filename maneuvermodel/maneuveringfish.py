@@ -124,7 +124,7 @@ class ManeuveringFish(object):
         return alpha_1 * self.base_mass**beta * np.exp(phi * self.temperature) / (self.base_mass / 1000.0)
         
     def maneuver_energy_cost_including_SMR(self, maneuver): # full energy spent by the fish during the maneuver (including SMR) but not opportunity cost
-        return maneuver.dynamics.moving_duration * self.SMR_J_per_s + maneuver.dynamics.energy_cost
+        return maneuver.dynamics.moving_duration * self.SMR_J_per_s + maneuver.dynamics.activity_cost
         
     def maneuver_total_cost_including_SMR(self, maneuver): # full cost of the maneuver including opportunity cost
         return maneuver.dynamics.moving_duration * self.SMR_J_per_s + maneuver.dynamics.total_cost

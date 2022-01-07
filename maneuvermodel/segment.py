@@ -150,7 +150,7 @@ class ManeuverSegment(object):
             of the segment (and therefore the true weight of the first tailbeat vs the others for computing experienced
             thrust) until the thrust is calculated. So we assume actual = exerted thrust and use t_s() to calculate an
             estimate of that duration in advance of learning the true number. """
-        initial_tailbeat_frequency = 1.3333333 * (1 + self.u_i / self.fish_total_length)
+        initial_tailbeat_frequency = 0.98 + 2.54 * (self.u_i / self.fish_total_length)  # tailbeat frequency from Webb 1991 eqn 9
         initial_tailbeat_duration = 1 / initial_tailbeat_frequency
         duration_estimate = t_s(self.u_i, self.u_thrust, self.length, self.tau(self.u_thrust))
         if duration_estimate <= initial_tailbeat_duration:

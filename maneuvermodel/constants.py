@@ -51,8 +51,8 @@ SENSITIVITY_WEBB_FACTOR_MULTIPLIER = 1.0
 #--------------------------------------- Optimization Model Defaults-- -----------------------------------------#
 #---------------------------------------------------------------------------------------------------------------#
 
-DEFAULT_OPT_N = 100
-DEFAULT_OPT_ITERATIONS = 500
+DEFAULT_OPT_N = 200
+DEFAULT_OPT_ITERATIONS = 300
 
 SLOW_OPT_N = 300
 SLOW_OPT_ITERATIONS = 2000
@@ -61,17 +61,15 @@ SLOW_OPT_ITERATIONS = 2000
 #--------------------------------------- Sensitivity analysis to-do --------------------------------------------#
 #---------------------------------------------------------------------------------------------------------------#
 
-# todo sensitivity analyses
-
-# - Prep step: Make the sensitivity analysis test save everything somehow
-
 # - First and foremost -- test disabling the focal point return velocity mechanism in the final straight to see if it helps or hurts the fit & how much energy effect
 #                      -- test how often fish actually use those long focal returns when predicted to
 # - Test SENSITIVITY_TURN_FACTOR_MULTIPLIER of 0.5 and 2.0
 # - Test SENSITIVITY_WEBB_FACTOR_MULTIPLIER of 0.5 and 2.0
 # - Test ALPHA of 3 and 5
-# - Test MAX_ACCELERATION of 50, 200, and 1000, and generate the comparisons plots vs real maneuver under these scenarios
 # - Test optimizing maneuver vs maneuver + opportunity costs
 # - Test enabling wait time (wait times are ideally predicted near 0 because we base estimated detections on start of motion)
 
+# todo see if I can derive what my model implies about the ACT parameter for the WI bioenergetics model
+
+# todo interpolation tables
 

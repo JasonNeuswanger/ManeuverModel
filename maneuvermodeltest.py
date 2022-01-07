@@ -42,15 +42,23 @@ def typical_maneuver(species, **kwargs):
     detection_point_3D = kwargs.get('modified_detection_point_3D', default_detection_point_3D)
     return optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D, **kwargs)
 
-species = 'Dolly Varden'
-test_fish = create_typical_fish('Dolly Varden', use_total_cost=False)
-detection_point_3D = (-typical[species]['detection_distance'] / 1.414, typical[species]['detection_distance'] / 1.414, 0.0)
+# species = 'Dolly Varden'
+# test_fish = create_typical_fish('Dolly Varden', use_total_cost=False)
+# detection_point_3D = (-typical[species]['detection_distance'] / 1.414, typical[species]['detection_distance'] / 1.414, 0.0)
+# # opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D)
+# opt, opt_model = optimize.optimal_maneuver(test_fish, n=DEFAULT_OPT_N, max_iterations=DEFAULT_OPT_ITERATIONS, detection_point_3D=detection_point_3D, tracked=True, return_optimization_model=True)
+
+species = 'Chinook Salmon'
+test_fish = create_typical_fish(species, use_total_cost=False, mean_water_velocity=1)
+detection_point_3D = (-1, 0.2, 0.0)
 # opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D)
 opt, opt_model = optimize.optimal_maneuver(test_fish, n=DEFAULT_OPT_N, max_iterations=DEFAULT_OPT_ITERATIONS, detection_point_3D=detection_point_3D, tracked=True, return_optimization_model=True)
 
+# todo make spreadsheet creation code export reproduction info for nans
+
 # best solution is 0.159198
 
-visualize.summarize_solution(opt, display = True, title = 'Typical Dolly', export_path = None, detailed=True, add_text_panel=True)
+# visualize.summarize_solution(opt, display = True, title = 'Typical Dolly', export_path = None, detailed=True, add_text_panel=True)
 
 
 
@@ -59,9 +67,6 @@ import seaborn as sns
 sns.lineplot(x=opt_model.tracked_nfe, y=opt_model.tracked_nfe_final_turn_adjusted)
 # previously about one third of the effort was wasted evaluating solutions that slowed down and went haywire
 print(opt_model.tracked_best_had_final_turn_adjusted)
-
-# todo check whether tailbeat frequency is one full swing of the tail or the swing and then back to starting point as in Maranda's shark paper
-# todo check whether slowdown mechanism is ever used or just unnecessary complication, and how much energy difference it makes
 
 from collections import Counter
 print("Convergence failure codes and frequencies:", Counter(opt_model.tracked_convergence_failure_codes.split('_')[1:]).most_common())
@@ -97,7 +102,7 @@ def check_johansen_et_al(display=False, suppress_output=False):
     maneuver = optimize.optimal_maneuver(fish, detection_point_3D=detection_point_3D)
     visualize.summarize_solution(maneuver, display=display, title='Cost Table Check', export_path=None, detailed=True)
     joulesPerMgO2 = 3.36 * 4.184
-    costMgO2 = maneuver.energy_cost / joulesPerMgO2
+    costMgO2 = maneuver.activity_cost / joulesPerMgO2
     costMgO2PerKG = costMgO2 / (fish_mass / 1000)
     print("Maneuver cost of locomotion alone is ", costMgO2PerKG, "mg O2 / kg")
     print("Focal swimming cost including SMR in is ", 3600 * (fish.focal_swimming_cost_including_SMR / joulesPerMgO2), " mg O2 / kg / hr")  # convert from focal_swimming_cost_including_SMR in J/s
@@ -111,12 +116,6 @@ def check_johansen_et_al(display=False, suppress_output=False):
 
 test_maneuver, test_fish = check_johansen_et_al(display=True)
 # RESULT: estimated cost (locomotion + SMR) of maneuver is 0.31746643784432216 mg O2 / kg, compared to Johansen's 1.28 mg O2 / kg
-
-
-
-
-
-
 
 
 def check_cost_table_value(fork_length, mean_water_velocity, xd, yd, display=False, suppress_output=False):
@@ -150,7 +149,7 @@ print(""""\n Total path length: {0}\n
   Pursuit duration: {2}\n
         Mean speed: {3}\n
    Locomotion cost: {4}\n
- Energy cost w/SMR: {5}\n""".format(fittest_solution.path.total_length,fittest_solution.duration,fittest_solution.pursuit_duration,fittest_solution.dynamics.mean_speed,fittest_solution.energy_cost,pdFish.maneuver_energy_cost_including_SMR(fittest_solution)))
+ Energy cost w/SMR: {5}\n""".format(fittest_solution.path.total_length, fittest_solution.duration, fittest_solution.pursuit_duration, fittest_solution.dynamics.mean_speed, fittest_solution.activity_cost, pdFish.maneuver_energy_cost_including_SMR(fittest_solution)))
 visualize.summarize_solution(fittest_solution, display = True, title = "Attempt to replicate Puckett & Dill", export_path = None, detailed=True)
 #  Total path length: 17.950554721707903
 #           Duration: 0.47928813234599077
@@ -159,8 +158,6 @@ visualize.summarize_solution(fittest_solution, display = True, title = "Attempt 
 #    Locomotion cost: 0.00435545547755718
 #  Energy cost w/SMR: 0.004658295191422853
 # This result gets kind of close to swimming the same speed for the same amount of time, and the energy cost is about 20X below Puckett & Dill's estimate.
-
-# todo In the paper, look at calculating what activity multipliers for WI bioenergetics (ACT) would be for my field fish excluding aggression etc
 #
 # Look at Rand & Hinch 1998 for the method of partitioning aerobic and anaerobic pathways and rationale for taxing anaerobic pathways at 15 % extra
 #

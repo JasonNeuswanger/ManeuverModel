@@ -139,9 +139,6 @@ class ManeuverPath(object):
         dir3 = -1 if (dir2 == 1 and Jy - r2 < 0) else 1
         # Calculate the third turn, including calculating r3 from its proportional value and adjusting Kx = final_turn_x if need be
         Kx = maneuver.final_turn_x
-
-        # todo THE BASIC IDEA HERE is to keep sliding final_turn_x to the right until there is room for r3, then put a max on r3 and set actual r3 from the proportions here with that max
-
         # Now compute the constraint itself.
         #print("\nIncoming final_turn_x is", Kx)
         r3_lateral_constraint_max = np.abs(Jx - Kx) - r2
@@ -158,10 +155,6 @@ class ManeuverPath(object):
         maneuver.r3 = r3
         maneuver.max_r3 = max_r3
         maneuver.final_turn_x = Kx
-        #print("Outgoing final_turn_x is", maneuver.final_turn_x,"and max r3 is", max_r3,"and maneuver.r3 is", maneuver.r3)
-
-        # todo I will also eventually slide final_turn_x to the right for speed convergence instead of slowing the maneuver
-
         Ky = dir3 * r3
         distJtoK = np.sqrt((Jx - Kx)**2 + (Jy - Ky)**2)
         # Validate the geometry now that point J is known, along with its distance to point K, and return with creation_succeeded = False if circles 2 and 3 aren't compatible

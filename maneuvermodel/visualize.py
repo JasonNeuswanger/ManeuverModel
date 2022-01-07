@@ -16,7 +16,7 @@ param_labels = ['Thrust (turn 1)', 'Thrust (straight 1)', 'Thrust (turn 2)', 'Th
                 'Thrust (straight 3A)', 'X (turn 3)', 'Wait time']
 
 def summarize_solution(solution, display=True, title=None, export_path=None, should_print_dynamics=True, detailed=False, add_text_panel=False, plot_dpi=132, plot_base_width=7.5, plot_base_height=6.5):
-    if solution.dynamics.energy_cost >= CONVERGENCE_FAILURE_COST:
+    if solution.dynamics.activity_cost >= CONVERGENCE_FAILURE_COST:
         print("Cannot summarize solution in which the final straight failed to converge.")
         return
     plt.ioff()  # set interactive mode to off so the plot doesn't display until show() is called
@@ -48,7 +48,7 @@ def summarize_solution(solution, display=True, title=None, export_path=None, sho
     if add_text_panel:
         p = solution.proportions()
         dyn = solution.dynamics
-        text = "Energy cost:     {0:12.8f}\n".format(solution.energy_cost)
+        text = "Activity cost:     {0:12.8f}\n".format(solution.activity_cost)
         text += "Pursuit duration:{0:12.8f}\n".format(solution.pursuit_duration)
         text += "Return duration: {0:12.8f}\n".format(solution.return_duration)
         text += "Total duration:  {0:12.8f}\n".format(solution.duration)
@@ -334,12 +334,12 @@ def plot_swimming_costs(ax, dynamicstuple, solution, detailed):
         ax2.set_ylim(ymin=0, ymax=1.05 * max(thrusts))
         ax2.set_ylabel('Webb-adjusted thrust (cm/s)', fontsize=smallfontsize)
     ax.set_xlabel('Time (s)', fontsize=smallfontsize)
-    ax.set_ylabel('Energy cost (J/s)', fontsize=smallfontsize)
+    ax.set_ylabel('Activity cost (J/s)', fontsize=smallfontsize)
     ax.set_ylim(ymin=0, ymax=1.05 * max(costs))
     ax.set_xlim(xmin=-0.02 * abs(max(straight_3_times) - min(turn_1_times)), xmax=max(straight_3_times))
     ax.text(-0.235, 0.95, 'd', transform=ax.transAxes, size=bigfontsize, weight='bold')
     if detailed:
-        ax.set_title('Cost ({0:.5f} J + {1:.5f} J from SMR)'.format(solution.dynamics.energy_cost, SMR * solution.dynamics.duration), fontsize=smallfontsize)
+        ax.set_title('Cost ({0:.5f} J + {1:.5f} J from SMR)'.format(solution.dynamics.activity_cost, SMR * solution.dynamics.duration), fontsize=smallfontsize)
 
 def plot_parameter_sensitivity(opt, display=True, export_path=None):
     opt_proportions = opt.proportions()
@@ -392,6 +392,6 @@ def print_dynamics(dynamicstuple, dynamics, solution):
     print("----------------------------------------------------------------------")
     energy_cost_with_SMR = solution.fish.maneuver_energy_cost_including_SMR(solution)
     total_cost_with_SMR = solution.fish.maneuver_energy_cost_including_SMR(solution) + dynamics.opportunity_cost
-    print("Energy cost = {0:7.4f} J ({1:7.4f} J without SMR, {2:7.4f} J w/opportunity cost of {3:7.4f} J).".format(energy_cost_with_SMR, dynamics.energy_cost, total_cost_with_SMR, dynamics.opportunity_cost))
+    print("Activity cost = {1:7.4f} J ({0:7.4f} J with SMR, {2:7.4f} J w/opportunity cost of {3:7.4f} J).".format(energy_cost_with_SMR, dynamics.activity_cost, total_cost_with_SMR, dynamics.opportunity_cost))
     print("Total duration = {0:8.6f} s (wait time {1:5.3f} s, pursuit {2:.3f} s). Traveled distance {3:6.1f} cm at mean speed {4:4.1f} cm/s".format(dynamics.duration, dynamics.wait_duration, dynamics.pursuit_duration, solution.path.total_length, dynamics.mean_speed))
 

@@ -21,12 +21,6 @@
 #       many quantities relevant to evaluating convergence performance.                                 %
 # ------------------------------------------------------------------------------------------------------%
 
-# todo I could add "no improvement of objective function beyond some threshold" as a different convergence
-#    condition rather than running for a fixed number of iterations. This would be handy to speed things up
-#    in maneuvers that are easy to converge within only 10-20,000 function evaluations, and maybe to take
-#    longer on the ones that have trouble converging. This might actually be worth doing... I would set epoch
-#    in that case to be the maximum iterations allowed, and use the threshold otherwise if one is provided.
-
 import numpy as np
 from .maneuveringfish import ManeuveringFish
 from .maneuver import maneuver_from_proportions
@@ -34,13 +28,13 @@ from .constants import CONVERGENCE_FAILURE_COST, DEFAULT_OPT_N, DEFAULT_OPT_ITER
 from numba import jit, float64, uint8, uint64, boolean, optional, types
 from numba.experimental import jitclass
 
-@jitclass([('position', float64[:]), ('fitness', float64), ('energy_cost', float64), ('pursuit_duration', float64), ('capture_x', float64), ('had_final_turn_adjusted', boolean), ('origin', uint8)])
+@jitclass([('position', float64[:]), ('fitness', float64), ('activity_cost', float64), ('pursuit_duration', float64), ('capture_x', float64), ('had_final_turn_adjusted', boolean), ('origin', uint8)])
 class SolutionSARO:
 
-    def __init__(self, position, fitness, energy_cost, pursuit_duration, capture_x, had_final_turn_adjusted, origin):
+    def __init__(self, position, fitness, activity_cost, pursuit_duration, capture_x, had_final_turn_adjusted, origin):
         self.position = position
         self.fitness = fitness
-        self.energy_cost = energy_cost
+        self.activity_cost = activity_cost
         self.pursuit_duration = pursuit_duration
         self.capture_x = capture_x
         self.had_final_turn_adjusted = had_final_turn_adjusted
@@ -51,7 +45,7 @@ solution_type = SolutionSARO.class_type.instance_type
 
 @jit(solution_type(solution_type), nopython=True)
 def copy_solution(s):
-    return SolutionSARO(s.position, s.fitness, s.energy_cost, s.pursuit_duration, s.capture_x, s.had_final_turn_adjusted, s.origin)
+    return SolutionSARO(s.position, s.fitness, s.activity_cost, s.pursuit_duration, s.capture_x, s.had_final_turn_adjusted, s.origin)
 
 saro_spec = [
     ('fish', fish_type),
@@ -74,7 +68,7 @@ saro_spec = [
     ('tracked_nfe_nonconvergent', optional(uint64[:])),
     ('tracked_nfe_final_turn_adjusted', optional(uint64[:])),
     ('tracked_convergence_failure_codes', optional(types.string)),
-    ('tracked_energy_cost', optional(float64[:])),
+    ('tracked_activity_cost', optional(float64[:])),
     ('tracked_pursuit_duration', optional(float64[:])),
     ('tracked_capture_x', optional(float64[:])),
     ('tracked_position', optional(float64[:,:])),
@@ -120,7 +114,7 @@ class CompiledSARO:
             self.tracked_nfe_nonconvergent = np.zeros(self.max_iterations + 1, dtype=uint64)
             self.tracked_nfe_final_turn_adjusted = np.zeros(self.max_iterations + 1, dtype=uint64)
             self.tracked_convergence_failure_codes = ''
-            self.tracked_energy_cost = np.zeros(self.max_iterations + 1, dtype=float64)
+            self.tracked_activity_cost = np.zeros(self.max_iterations + 1, dtype=float64)
             self.tracked_pursuit_duration = np.zeros(self.max_iterations + 1, dtype=float64)
             self.tracked_capture_x = np.zeros(self.max_iterations + 1, dtype=float64)
             self.tracked_position = np.zeros((self.max_iterations + 1, self.dims), dtype=float64)
@@ -132,13 +126,13 @@ class CompiledSARO:
         self.nfe += 1
         maneuver = maneuver_from_proportions(self.fish, self.det_x, self.det_y, p)
         new_p = maneuver.proportions()[:self.dims] # this saves the changes made to thrusts within the maneuver to arrive from downstream of the focal point at the end
-        if maneuver.dynamics.energy_cost == CONVERGENCE_FAILURE_COST:
+        if maneuver.dynamics.activity_cost == CONVERGENCE_FAILURE_COST:
             self.nfe_nonconvergent += 1
             if self.tracked:
                 self.tracked_convergence_failure_codes += '_' + maneuver.convergence_failure_code
         if maneuver.had_final_turn_adjusted:
             self.nfe_final_turn_adjusted += 1
-        return SolutionSARO(new_p, maneuver.fitness, maneuver.energy_cost, maneuver.pursuit_duration, maneuver.capture_x, maneuver.had_final_turn_adjusted, origin)
+        return SolutionSARO(new_p, maneuver.fitness, maneuver.activity_cost, maneuver.pursuit_duration, maneuver.capture_x, maneuver.had_final_turn_adjusted, origin)
 
     def evolve(self, master_pop):
         pop_x = master_pop[:self.pop_size].copy()
@@ -205,7 +199,7 @@ class CompiledSARO:
             self.tracked_nfe[0] = self.nfe
             self.tracked_nfe_nonconvergent[0] = self.nfe_nonconvergent
             self.tracked_nfe_final_turn_adjusted[0] = self.nfe_final_turn_adjusted
-            self.tracked_energy_cost[0] = master_pop[0].energy_cost
+            self.tracked_activity_cost[0] = master_pop[0].activity_cost
             self.tracked_pursuit_duration[0] = master_pop[0].pursuit_duration
             self.tracked_capture_x[0] = master_pop[0].capture_x
             self.tracked_position[0] = master_pop[0].position
@@ -215,7 +209,7 @@ class CompiledSARO:
                 self.tracked_nfe[i] = self.nfe
                 self.tracked_nfe_nonconvergent[i] = self.nfe_nonconvergent
                 self.tracked_nfe_final_turn_adjusted[i] = self.nfe_final_turn_adjusted
-                self.tracked_energy_cost[i] = master_pop[0].energy_cost
+                self.tracked_activity_cost[i] = master_pop[0].activity_cost
                 self.tracked_pursuit_duration[i] = master_pop[0].pursuit_duration
                 self.tracked_capture_x[i] = master_pop[0].capture_x
                 self.tracked_position[i] = master_pop[0].position
@@ -224,7 +218,7 @@ class CompiledSARO:
                 self.tracked_number_with_final_turn_adjusted[i] = len([sol for sol in master_pop if sol.had_final_turn_adjusted])
         self.solution = master_pop[0]
         if verbose:
-            print("Lowest energy cost was", self.solution.energy_cost, "J after", self.nfe,"evals  (", self.max_iterations, "x", self.pop_size, ".")
+            print("Lowest energy cost was", self.solution.activity_cost, "J after", self.nfe, "evals  (", self.max_iterations, "x", self.pop_size, ".")
         return self.solution
 
     def create_random_solution(self):

@@ -53,12 +53,13 @@ maneuver_spec = [
     ('pthrusts', float64[:]),                  # proportional versions of the above corresponding to their place within their individual bounds
     ('final_thrust_a', float64),               # first thrust of the final straight, constrained differently than the rest
     ('final_pthrust_a', float64),              # proportional version of the first thrust of the final straight
-    ('fitness', float64),
-    ('had_final_turn_adjusted', boolean),     # tracks whether this maneuver had final_turn_x adjusted to avoid overshooting the focal point
+    ('fitness', float64),                      # internal metric to be maximized to find the optimal maneuver, often just -1*energy_cost
+    ('had_final_turn_adjusted', boolean),      # tracks whether this maneuver had final_turn_x adjusted to avoid overshooting the focal point
     ('duration', float64),  
     ('pursuit_duration', optional(float64)), # not used internally, just in the final summary for reference elsewhere
     ('return_duration', optional(float64)),  # not used internally, just in the final summary for reference elsewhere
-    ('energy_cost', optional(float64)),      # not used internally, just in the final summary for reference elsewhere
+    ('activity_cost', optional(float64)),      # not used internally, just in the final summary for reference elsewhere
+    ('energy_cost_including_SMR', optional(float64)), # not used internally, just in the final summary for reference elsewhere
     ('capture_x', optional(float64)),        # not used internally, just in the final summary for reference elsewhere
     ('mean_swimming_speed', optional(float64)),  
     ('mean_swimming_speed_bodylengths', optional(float64)),  
@@ -129,38 +130,33 @@ class Maneuver(object):
             return result        
 
     def calculate_fitness(self):
-        try:
+        self.path = ManeuverPath(self)
+        self.dynamics = ManeuverDynamics(self)
+        while self.dynamics.needs_to_back_up_by > 0.0:  # move the final turn downstream to allow room to converge on the focal point from below
+            self.final_turn_x += self.dynamics.needs_to_back_up_by  # back up enough to be behind the focal point approximately
+            # if self.final_turn_x > self.capture_x + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length:
+            #     print("backing up by", self.dynamics.needs_to_back_up_by,"put final_turn_x", self.final_turn_x,"> boundary",self.capture_x + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length)
             self.path = ManeuverPath(self)
-        except Exception:
-            print("Exception when initially creating path in maneuver.py calculate_fitness().")
-        if not self.path.creation_succeeded:
-            print("UH OH path creation didn't succeed")
-        try:
             self.dynamics = ManeuverDynamics(self)
-            while self.dynamics.needs_to_back_up_by > 0.0: # actually backing up the final turn, not slowing down the whole maneuver
-                self.final_turn_x += self.dynamics.needs_to_back_up_by # back up enough to be behind the focal point approximately
-                self.path = ManeuverPath(self)
-                self.dynamics = ManeuverDynamics(self)
-                self.had_final_turn_adjusted = True
-        except Exception:
-            print("Exception creating dynamics in maneuver.py calculate_fitness().")
+            self.had_final_turn_adjusted = True
         # The "fitness" for the optimization algorithm is the negative cost, so maximizing fitness = minimizing cost
-        self.fitness = -self.dynamics.total_cost if self.fish.use_total_cost else -self.dynamics.energy_cost
+        self.fitness = -self.dynamics.total_cost if self.fish.use_total_cost else -self.dynamics.activity_cost
         self.duration = self.dynamics.duration                       # saving duration for convenient input to plotting functions later
         self.pursuit_duration = self.dynamics.pursuit_duration
         self.return_duration = self.dynamics.return_duration
-        self.energy_cost = self.dynamics.energy_cost
+        self.activity_cost = self.dynamics.activity_cost
+        self.energy_cost_including_SMR = self.dynamics.activity_cost + self.fish.SMR_J_per_s * self.duration
         self.capture_x = self.path.capture_point[0]
 
     def calculate_summary_metrics(self):
         """ Calculates attributes of the solution that only need to be requested if it was the optimal solution to a given maneuver, not for each intermediate solution. Separated from
             calculate_fitness for computational efficiency, since these are usually only needed for the final optimal solution."""
         oq = 14.05834 # oxycalorific equivalent
-        if self.energy_cost != CONVERGENCE_FAILURE_COST:
+        if self.activity_cost != CONVERGENCE_FAILURE_COST:
             self.mean_swimming_speed = self.path.total_length / self.dynamics.moving_duration
             self.mean_swimming_speed_bodylengths = self.mean_swimming_speed / self.fish.total_length
-            self.swimming_cost_per_second = self.dynamics.energy_cost / self.dynamics.moving_duration
-            self.mean_metabolic_rate = self.swimming_cost_per_second / ((1/3600.0) * (self.fish.base_mass/1000.0) * oq) # convert from J/s back to mg O2/kg/hr to get mean metabolic rate while moving on the maneuver
+            self.swimming_cost_per_second = self.dynamics.activity_cost / self.dynamics.moving_duration
+            self.mean_metabolic_rate = self.fish.SMR + self.swimming_cost_per_second / ((1/3600.0) * (self.fish.base_mass/1000.0) * oq) # convert from J/s back to mg O2/kg/hr to get mean metabolic rate while moving on the maneuver
             self.mean_metabolic_rate_SMRs = 1 + self.mean_metabolic_rate / self.fish.SMR if self.fish.SMR > 0 else np.nan # in case zero is passed as SMR for calculations limited to locomotion costs
 
     def predicted_capture_point_3D_groundcoords(self):
@@ -194,10 +190,11 @@ class Maneuver(object):
         p[6] = proportion_of_range(self.r2, self.fish.min_turn_radius, max_turn_radius)
         p[7] = proportion_of_range(self.r3, self.fish.min_turn_radius, self.max_r3)
         # Set characteristics of the final straight to catch up to the focal point / velocity
-        # min_final_turn_x = xc - 2 * (self.r2 + self.r3)# + 2 * self.fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
         p[8] = self.final_pthrust_a
-        # p[9] = proportion_of_range(self.final_turn_x, min_final_turn_x, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length)
-        p[9] = proportion_of_range(self.final_turn_x, xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length)
+        min_final_turn_x = xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length
+        max_final_turn_x = max(MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length,
+                               xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * self.fish.fork_length) + self.r1 + 2*self.r2
+        p[9] = proportion_of_range(self.final_turn_x, min_final_turn_x, max_final_turn_x)
         return p
     
 maneuver_type = Maneuver.class_type.instance_type
@@ -227,8 +224,11 @@ def maneuver_from_proportions(fish, xd, yd, p):
     r3_proportional = p[7] # = value_from_proportion(p[7], fish.min_turn_radius, max_turn_radius)
     # Set characteristics of the final straight to catch up to the focal point / velocity
     final_pthrust_a = p[8] # must be higher than the water velocity to catch up to the focal point (by at least 2 % to improve convergence)
-    # min_final_turn_x = xc - 2 * (r2 + r3 + 2 * fish.fork_length) # need to encompass any value to which this might be pushed to the left to guarantee convergence
-    final_turn_x = value_from_proportion(p[9], xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length)
+    # maximum value of final_turn_x is governed by an arbitrary multiple of fish.fork_length, either to the -x side of
+    # the capture point or to the +x side of whichever is greater, the capture point or the origin
+    min_final_turn_x = xc - MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length
+    max_final_turn_x = max(MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length, xc + MAX_FINAL_TURN_X_LENGTH_MULTIPLE * fish.fork_length) + r1 + 2*r2
+    final_turn_x = value_from_proportion(p[9], min_final_turn_x, max_final_turn_x)
     # Creation solution object and return
     return Maneuver(fish, r1, r2, r3_proportional, final_turn_x, pthrusts, wait_time, xd, yd, final_pthrust_a)
 
@@ -242,5 +242,5 @@ def convergent_random_maneuver(fish, xd, yd): # quick helper to get a random sol
     maneuver_converged = False
     while not maneuver_converged:
         maneuver = random_maneuver(fish, xd, yd)
-        maneuver_converged = maneuver.dynamics.energy_cost < CONVERGENCE_FAILURE_COST
+        maneuver_converged = maneuver.dynamics.activity_cost < CONVERGENCE_FAILURE_COST
     return maneuver

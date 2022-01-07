@@ -21,21 +21,21 @@ def run_convergence_test(fish, detection_point_3D, label="Unnamed", export_path=
     plt.ioff()
     fig, ((ax, ax2),(ax3,ax4)) = plt.subplots(2, 2, figsize=(16, 11))
     # ----------------------------------------- Plot histories histories for each fast solution ---------------------------------#
-    ax.axhline(y=global_opt.energy_cost, ls='dotted', color='0.7', label='Global Optimum')
+    ax.axhline(y=global_opt.activity_cost, ls='dotted', color='0.7', label='Global Optimum')
     ax3.axhline(y=global_opt.pursuit_duration, ls='dotted', color='0.7', label='Global Optimum')
     ax4.axhline(y=global_opt.capture_x, ls='dotted', color='0.7', label='Global Optimum')
     stored_opts = []
     for _ in range(n_tests):
         opt, opt_model = optimal_maneuver(fish, detection_point_3D, max_iterations=max_iterations, n=n, tracked=True, return_optimization_model=True)
         stored_opts.append(opt)
-        ax.plot(opt_model.tracked_nfe, opt_model.tracked_energy_cost, label="{0:7.6f} x Glob Opt".format(opt.energy_cost / global_opt.energy_cost))
+        ax.plot(opt_model.tracked_nfe, opt_model.tracked_activity_cost, label="{0:7.6f} x Glob Opt".format(opt.activity_cost / global_opt.activity_cost))
         ax3.plot(opt_model.tracked_nfe, opt_model.tracked_pursuit_duration, label="{0:7.6f} x Glob Opt".format(opt.pursuit_duration / global_opt.pursuit_duration))
         ax4.plot(opt_model.tracked_nfe, opt_model.tracked_capture_x, label="{0:7.6f} x Glob Opt".format(opt.capture_x / global_opt.capture_x))
         ax.set_yscale('log')
     ax.set_ylabel("Maneuver activity cost (J)")
     ax3.set_ylabel("Pursuit duration (s)")
     ax4.set_ylabel("Capture x (cm)")
-    ax.set_ylim([0.99 * global_opt.energy_cost, 1.5 * global_opt.energy_cost])
+    ax.set_ylim([0.99 * global_opt.activity_cost, 1.5 * global_opt.activity_cost])
     # -------------------------- Plot parameter values over the evolution of the global optimum solution -------------------------#
     param_values = global_opt_model.tracked_position.transpose()
     for i, pv in enumerate(param_values): ax2.plot(global_opt_model.tracked_nfe, pv, label=param_labels[i])
@@ -93,8 +93,8 @@ def optimal_maneuver(fish, detection_point_3D, **kwargs):
     fittest_maneuver.calculate_summary_metrics()  # calculate final summary quantities like average metabolic rate that are only needed for the optimal solution, not to evaluate fitness while finding it
     label = kwargs.get('label', "")
     if not kwargs.get('suppress_output', False):
-        if fittest_maneuver.energy_cost != CONVERGENCE_FAILURE_COST:
-            print("Lowest energy cost after {0} iterations ({7:8d} evaluations, {8:5.1f} s) was {1:10.6f} joules. Mean speed {2:4.1f} cm/s, {3:5.2f} bodylengths/s. Metabolic rate {4:7.1f} mg O2/kg/hr ({5:4.1f}X SMR). {6}".format(optimization_model.max_iterations, fittest_maneuver.energy_cost, fittest_maneuver.mean_swimming_speed, fittest_maneuver.mean_swimming_speed_bodylengths, fittest_maneuver.mean_metabolic_rate, fittest_maneuver.mean_metabolic_rate_SMRs, label, fittest_maneuver.objective_function_evaluations, time_cost_s))
+        if fittest_maneuver.activity_cost != CONVERGENCE_FAILURE_COST:
+            print("Lowest energy cost after {0} iterations ({7:8d} evaluations, {8:5.1f} s) was {1:10.6f} joules. Mean speed {2:4.1f} cm/s, {3:5.2f} bodylengths/s. Metabolic rate {4:7.1f} mg O2/kg/hr ({5:4.1f}X SMR). {6}".format(optimization_model.max_iterations, fittest_maneuver.activity_cost, fittest_maneuver.mean_swimming_speed, fittest_maneuver.mean_swimming_speed_bodylengths, fittest_maneuver.mean_metabolic_rate, fittest_maneuver.mean_metabolic_rate_SMRs, label, fittest_maneuver.objective_function_evaluations, time_cost_s))
         else:
             print("Maneuver failed to converge in all possible paths/dynamics considered. Did not find an optimal maneuver.")
             if hasattr(fittest_maneuver, 'convergence_failure_code'):
