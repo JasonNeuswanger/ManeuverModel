@@ -21,25 +21,25 @@ for i in range(N_NODES):
     # partition should be the name of the queue, which is batch?
     # previously requested 500mb memory
     batch_file_contents = """#!/bin/bash
-    #SBATCH --job-name={job_name}
-    #SBATCH --partition=batch
-    #SBATCH --ntasks=1
-    #SBATCH --mem=2G
-    #SBATCH --time=336:00:00
-    #SBATCH --export=NONE
-    #SBATCH --output=%x_%j.out
-    #SBATCH --error=%x_%j.err
-    #SBATCH --mail-type=END,FAIL
-    #SBATCH --mail-user=jasonneuswanger@gmail.com
+#SBATCH --job-name={job_name}
+#SBATCH --partition=batch
+#SBATCH --ntasks=1
+#SBATCH --mem=2G
+#SBATCH --time=336:00:00
+#SBATCH --export=NONE
+#SBATCH --output=%x_%j.out
+#SBATCH --error=%x_%j.err
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=jasonneuswanger@gmail.com
 
-    echo
-    echo "Job ID: $SLURM_JOB_ID"
-    echo "Queue (Partition):  $SLURM_JOB_PARTITION"
-    echo "Cores:  $SLURM_NTASKS"
-    echo "Nodes:  $($SLURM_JOB_NODELIST | sort -u | tr '\n' ' ')"
-    echo
-    
-    python3 maneuver_spreadsheet_creation.py
+echo
+echo "Job ID: $SLURM_JOB_ID"
+echo "Queue (Partition):  $SLURM_JOB_PARTITION"
+echo "Cores:  $SLURM_NTASKS"
+echo "Nodes:  $($SLURM_JOB_NODELIST | sort -u | tr '\n' ' ')"
+echo
+
+python3 maneuver_spreadsheet_creation.py
     """.format(cores=CORES_PER_NODE, job_name=JOB_NAME)
 
     with open('{0}.sh'.format('batches/' + batch_name), 'w') as batch_file:
