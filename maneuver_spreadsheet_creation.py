@@ -3,6 +3,7 @@ import os
 import time
 from platform import uname
 import pymysql
+import pickle
 from maneuvermodel import optimize, maneuveringfish
 from maneuvermodel.constants import DEFAULT_OPT_N, DEFAULT_OPT_ITERATIONS, CONVERGENCE_FAILURE_COST
 
@@ -22,8 +23,11 @@ FAST_TEST = False # Set to true for debugging, to create a whole result set in a
 
 IS_MAC = (os.uname()[0] == 'Darwin')
 
+db_credentials = pickle.load(open("calibration_db_credentials.pickle", "rb"))
+
 def db_connect():
-    return pymysql.connect(host="troutnut.com", port=3306, user="jasonn5_calibtra", passwd="aVoUgLJyKo926", db="jasonn5_calibration_tracking", autocommit=True)
+    return pymysql.connect(host="troutnut.com", port=3306, user=db_credentials["user"],
+                           passwd=db_credentials["passwd"], db=db_credentials["db"], autocommit=True)
 db = db_connect() # Maintain a global database connection that may be rebuilt with this function when the connection is lost
 
 def db_execute(query):
