@@ -23,12 +23,14 @@ for i in range(N_NODES):
     batch_file_contents = """#!/bin/bash
     #SBATCH --job-name={job_name}
     #SBATCH --partition=batch
-    #SBATCH --nodes=1
-    #SBATCH --n-tasks-per-node={cores}
-    #SBATCH --mem=1gb
+    #SBATCH --ntasks=1
+    #SBATCH --mem=2G
     #SBATCH --time=336:00:00
+    #SBATCH --export=NONE
+    #SBATCH --output=%x_%j.out
+    #SBATCH --error=%x_%j.err
+    #SBATCH --mail-type=END,FAIL
     #SBATCH --mail-user=jasonneuswanger@gmail.com
-    #SBATCH --mail-type=END,FAIL,REQUEUE
 
     echo
     echo "Job ID: $SLURM_JOB_ID"
