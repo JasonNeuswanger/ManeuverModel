@@ -25,7 +25,7 @@ for i in range(N_NODES):
 #SBATCH --partition=batch
 #SBATCH --ntasks=1
 #SBATCH --mem=2G
-#SBATCH --time=336:00:00
+#SBATCH --time=168:00:00
 #SBATCH --export=NONE
 #SBATCH --output=%x_%j.out
 #SBATCH --error=%x_%j.err
