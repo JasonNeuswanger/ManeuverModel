@@ -1,5 +1,5 @@
 import numpy as np
-from numba import float64, boolean
+from numba import float64
 from numba.experimental import jitclass
 from .segment import ManeuverSegment, Cd
 from .finalstraight import ManeuverFinalStraight, thrust_a_adjusted_for_tailbeats
@@ -68,8 +68,7 @@ class ManeuverDynamics(object):
         # Now that the end of turn 3 is somewhere downstream of the focal point, calculate the final straight to catch up to it
         try:
             x_p, t_p = self.penultimate_point(maneuver)
-            self.straight_3 = ManeuverFinalStraight(fish, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a,
-                                                    False)
+            self.straight_3 = ManeuverFinalStraight(fish, t_p, x_p, self.turn_3.final_speed, maneuver.final_thrust_a, False)
             if not self.straight_3.creation_succeeded:
                 maneuver.convergence_failure_code = self.straight_3.convergence_failure_code
                 self.activity_cost = CONVERGENCE_FAILURE_COST

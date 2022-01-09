@@ -117,7 +117,7 @@ def calculate_cost_tables(fork_length, velocity, taskid):
                     ratio_to_median = table[i,j] / neighbor_median
                     worst_allowable_ratio = 3.0 # assume optimal solution wasn't found if solution differs from neighbors by factor of 3
                     if ratio_to_median < 1/worst_allowable_ratio or ratio_to_median > worst_allowable_ratio or np.isnan(table[i,j]):
-                        for retry in (2,3,4): # If we didn't get reasonable values the first time, try again with more rigorous but time-consuming algorithm parameters
+                        for retry in (2,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4): # If we didn't get reasonable values the first time, try again with more rigorous but time-consuming algorithm parameters
                             if not IS_MAC: db_execute("UPDATE maneuver_model_tasks SET retries=retries+1 WHERE taskid={0}".format(taskid))
                             sol = optimize.optimal_maneuver(fish,
                                                             detection_point_3D=(xs[i], ys[j], 0.0),

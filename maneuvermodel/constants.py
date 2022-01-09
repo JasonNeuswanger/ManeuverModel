@@ -8,7 +8,6 @@
 
 # Multiple by which the cost of steady swimming exceeds that of coasting
 ALPHA = 4 # standard value 4
-
 #---------------------------------------------------------------------------------------------------------------#
 #---------------------------------------- Numerical algorithm settings -----------------------------------------#
 #---------------------------------------------------------------------------------------------------------------#
@@ -45,7 +44,7 @@ CONVERGENCE_FAILURE_COST = 99999999999
 SENSITIVITY_TURN_FACTOR_MULTIPLIER = 1.0
 
 # Multiplier on the amount by which the unsteady swimming webb_factor exceeds 1, similar to above.
-SENSITIVITY_WEBB_FACTOR_MULTIPLIER = 1.0
+SENSITIVITY_WEBB_FACTOR_MULTIPLIER = 1.0 # todo tried 0.5, next 2.0
 
 #---------------------------------------------------------------------------------------------------------------#
 #--------------------------------------- Optimization Model Defaults-- -----------------------------------------#
@@ -61,13 +60,8 @@ SLOW_OPT_ITERATIONS = 1000
 #--------------------------------------- Sensitivity analysis to-do --------------------------------------------#
 #---------------------------------------------------------------------------------------------------------------#
 
-# - First and foremost -- test disabling the focal point return velocity mechanism in the final straight to see if it helps or hurts the fit & how much energy effect
-#                      -- test how often fish actually use those long focal returns when predicted to
+# - Test ALPHA of 3 and 5
 # - Test SENSITIVITY_TURN_FACTOR_MULTIPLIER of 0.5 and 2.0
 # - Test SENSITIVITY_WEBB_FACTOR_MULTIPLIER of 0.5 and 2.0
-# - Test ALPHA of 3 and 5
 # - Test optimizing maneuver vs maneuver + opportunity costs
 # - Test enabling wait time (wait times are ideally predicted near 0 because we base estimated detections on start of motion)
-
-# todo see if I can derive what my model implies about the ACT parameter for the WI bioenergetics model -- yes it's just a constant multiplier on SMR
-# the fish bio 3.0 manual recommended ACT of 9.9 for sockeye and pinks, 11.7 for lake trout, 9.7 for chinook and coho and steelhead

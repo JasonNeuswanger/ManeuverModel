@@ -48,8 +48,6 @@ def typical_maneuver(species, **kwargs):
 # # opt = optimize.run_convergence_test(typical_fish[species], detection_point_3D=detection_point_3D)
 # opt, opt_model = optimize.optimal_maneuver(test_fish, n=DEFAULT_OPT_N, max_iterations=DEFAULT_OPT_ITERATIONS, detection_point_3D=detection_point_3D, tracked=True, return_optimization_model=True)
 
-# todo make spreadsheet creation code export reproduction info for nans
-
 # best solution is 0.159198
 
 # visualize.summarize_solution(opt, display = True, title = 'Typical Dolly', export_path = None, detailed=True, add_text_panel=True)

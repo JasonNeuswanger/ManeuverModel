@@ -24,11 +24,6 @@ from scipy.interpolate import RectBivariateSpline
 # the return stage don't count as "handling" because the fish can be detecting and potentially pursuing other prey
 # during that time. Only the pursuit is time lost with regard to other
 
-# todo figure out how SMR would be apportioned during an application based on pursuit duration only, and whether I should include anything else
-
-# todo note somewhere that handling time would exclude wait time, if using pursuit duration
-
-
 #-----------------------------------------------------------------------------------------------------------------------
 #                                  MODELING CHOICES, INCLUDING FIXED SETTINGS
 #-----------------------------------------------------------------------------------------------------------------------

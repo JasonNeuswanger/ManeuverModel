@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from sys import argv
 
 # CONFIGURATION FOR A GIVEN JOB
@@ -46,3 +47,5 @@ python3 maneuver_spreadsheet_creation.py
         batch_file.write(batch_file_contents)
 
     os.system("sbatch 'batches/{0}.sh'".format(batch_name)) # no comment
+
+    time.sleep(1) # sleep just to prevent the jobs from starting at the same time and grabbing the same job parameters from the database
